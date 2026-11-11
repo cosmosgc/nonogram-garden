@@ -305,6 +305,51 @@ test('unsaved work is restored automatically after a reload at the same version'
     await expect(page.locator('[data-accessible-cell="0"]')).toHaveAttribute('aria-label', 'Row 1, column 1: filled');
 });
 
+test('recovers an edit after navigating away while its autosave request is pending', async ({ page }) => {
+    let notifyUpdateStarted!: () => void;
+    const updateStarted = new Promise<void>(resolve => { notifyUpdateStarted = resolve; });
+    let allowFirstUpdateToFinish!: () => void;
+    const firstUpdateMayFinish = new Promise<void>(resolve => { allowFirstUpdateToFinish = resolve; });
+    let notifyFirstUpdateFinished!: () => void;
+    const firstUpdateFinished = new Promise<void>(resolve => { notifyFirstUpdateFinished = resolve; });
+    let updates = 0;
+
+    draftRoutes(page, {
+        draft: () => draft(),
+        onUpdate: async route => {
+            updates++;
+            if (updates === 1) {
+                notifyUpdateStarted();
+                await firstUpdateMayFinish;
+                await route.abort().catch(() => undefined);
+                notifyFirstUpdateFinished();
+
+                return;
+            }
+
+            const body = route.request().postDataJSON() as { grid: { cells: string } };
+            await route.fulfill({ json: draft(3, body.grid.cells) });
+        },
+    });
+
+    await openEditor(page);
+    await clickCell(page, 6);
+    await updateStarted;
+    await expect(page.locator('.save-area [role="status"]')).toContainText('Autosaving');
+    expect(await page.evaluate(() => Object.keys(localStorage).some(key => key.startsWith('nonogram:draft:')))).toBe(true);
+
+    await page.goto('/tests/browser/player.html');
+    allowFirstUpdateToFinish();
+    await firstUpdateFinished;
+    await page.goto('/tests/browser/editor.html');
+    await expect(page.locator('.save-area [role="status"]')).toContainText('Recovered unsaved local edits');
+    await page.locator('.accessible-toggle').click();
+
+    await expect(page.locator('[data-accessible-cell="6"]')).toHaveAttribute('aria-label', 'Row 2, column 2: filled');
+    await expect.poll(() => updates).toBe(2);
+    await expect(page.locator('.save-area [role="status"]')).toContainText('Saved');
+});
+
 test('a newer server draft requires explicit confirmation before restoring local work', async ({ page }) => {
     let version = 2;
     draftRoutes(page, {
