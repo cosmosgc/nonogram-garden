@@ -19,7 +19,7 @@ Production must use a persistent supported SQL database; SQLite is the automated
 
 The target is the latest stable and previous major release of desktop Chrome, Edge, Firefox, and Safari, plus the current iOS Safari and Android Chrome releases. Browsers without modern ES modules, Web Workers, `File`/Blob APIs, or the required canvas/image APIs are unsupported. The image importer depends on browser-local image decoding; its source image is not uploaded.
 
-Component tests run in JSDOM. A small Playwright suite runs in Chromium for player layout, auto-cross, lives, and Hardcore behavior; it does not certify the full app or cross-browser/device support. Manual compatibility, assistive-technology, touch, orientation, and virtual-keyboard testing remains a release task.
+Component tests run in JSDOM. Playwright runs the browser suite in Chromium, Firefox, and WebKit, covering editor/player interaction and selected accessibility behaviors. WebKit is an engine proxy rather than certification of Safari releases, and these CI runs do not certify Edge or physical mobile devices. Manual compatibility, assistive-technology, touch, orientation, and virtual-keyboard testing remains a release task.
 
 ## Dependency update policy
 
