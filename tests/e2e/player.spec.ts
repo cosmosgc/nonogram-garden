@@ -79,6 +79,52 @@ test('an emulated touchscreen tap marks the selected player cell', async ({ brow
     }
 });
 
+test('an emulated touch pointer paints consecutive player cells as a single stroke', async ({ browser }) => {
+    const context = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        isMobile: true,
+        hasTouch: true,
+    });
+
+    try {
+        const page = await context.newPage();
+        await installGameApi(page);
+        await page.goto('http://127.0.0.1:5173/tests/browser/player.html');
+
+        const dispatchTouchPointer = async (type: 'pointerdown' | 'pointerenter', index: number) => {
+            await page.locator(`[data-player-cell="${index}"]`).evaluate((cell, eventType) => {
+                cell.dispatchEvent(new PointerEvent(eventType, {
+                    bubbles: true,
+                    cancelable: true,
+                    pointerId: 81,
+                    pointerType: 'touch',
+                    isPrimary: true,
+                    button: eventType === 'pointerdown' ? 0 : -1,
+                    buttons: 1,
+                }));
+            }, type);
+        };
+
+        await dispatchTouchPointer('pointerdown', 0);
+        await dispatchTouchPointer('pointerenter', 1);
+        await dispatchTouchPointer('pointerenter', 2);
+        await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointerup', {
+            bubbles: true,
+            pointerId: 81,
+            pointerType: 'touch',
+            isPrimary: true,
+            button: 0,
+            buttons: 0,
+        })));
+
+        await expect(page.locator('[data-player-cell="0"]')).toHaveAttribute('aria-label', 'Row 1, column 1: filled');
+        await expect(page.locator('[data-player-cell="1"]')).toHaveAttribute('aria-label', 'Row 1, column 2: filled');
+        await expect(page.locator('[data-player-cell="2"]')).toHaveAttribute('aria-label', 'Row 1, column 3: filled');
+    } finally {
+        await context.close();
+    }
+});
+
 test('restores guest puzzle progress after a page reload', async ({ page }) => {
     await installGameApi(page);
     await page.goto('/tests/browser/player.html');
