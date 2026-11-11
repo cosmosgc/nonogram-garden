@@ -18,7 +18,7 @@ class PuzzleBrowseController extends Controller
             ->where('visibility', 'public')
             ->whereIn('moderation_status', $settings->visibleModerationStatuses())
             ->with([
-                'owner:id,name,username',
+                'owner:id,name,username,avatar_path',
                 'publishedRevision:id,puzzle_id,width,height',
             ]);
 

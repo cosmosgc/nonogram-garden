@@ -76,7 +76,12 @@
                         @if ($puzzle->moderation_status === 'pending')<span class="ml-2 rounded bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-900">Pending review</span>@endif
                         @if ($puzzle->description)<p class="mt-2 line-clamp-3 text-sm text-slate-600">{{ $puzzle->description }}</p>@endif
                         @if ($puzzle->tags)<p class="mt-3 flex flex-wrap gap-2">@foreach ($puzzle->tags as $tag)<a class="rounded bg-slate-100 px-2 py-1 text-xs underline" href="{{ route('puzzles.index', ['tag' => $tag]) }}">{{ $tag }}</a>@endforeach</p>@endif
-                        <p class="mt-4 text-sm text-slate-600">{{ $puzzle->publishedRevision->width }}×{{ $puzzle->publishedRevision->height }} · by {{ $puzzle->owner->name }}</p>
+                        <div class="mt-4 flex items-center gap-2 text-sm text-slate-600">
+                            @if ($puzzle->owner->avatar_path)
+                                <img src="{{ asset('storage/'.$puzzle->owner->avatar_path) }}" alt="{{ $puzzle->owner->name }}'s profile avatar" class="h-9 w-9 rounded-full object-cover">
+                            @endif
+                            <span>{{ $puzzle->publishedRevision->width }}×{{ $puzzle->publishedRevision->height }} · by {{ $puzzle->owner->name }}</span>
+                        </div>
                         </div>
                     </li>
                 @endforeach

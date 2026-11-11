@@ -42,6 +42,32 @@ class PuzzleBrowseTest extends TestCase
             ->assertDontSee('draft_cells');
     }
 
+    public function test_browse_and_puzzle_view_show_the_creator_avatar(): void
+    {
+        $owner = User::factory()->create(['name' => 'Avatar Creator', 'username' => 'avatar_creator']);
+        $avatarPath = "avatars/{$owner->id}/creator.png";
+        $owner->avatar_path = $avatarPath;
+        $owner->save();
+        $puzzle = Puzzle::factory()->create([
+            'user_id' => $owner->id,
+            'title' => 'Puzzle with avatar',
+            'width' => 1,
+            'height' => 1,
+            'draft_cells' => '1',
+        ]);
+        $this->publishAndApprove($puzzle, $owner)->assertCreated();
+
+        $avatarUrl = asset('storage/'.$avatarPath);
+        $this->get('/puzzles')
+            ->assertOk()
+            ->assertSee('src="'.$avatarUrl.'"', false)
+            ->assertSee('Avatar Creator\'s profile avatar', false);
+        $this->get(route('puzzles.show', $puzzle))
+            ->assertOk()
+            ->assertSee('src="'.$avatarUrl.'"', false)
+            ->assertSee('Puzzle with avatar');
+    }
+
     public function test_browse_shows_solution_preview_only_to_a_user_who_completed_that_revision(): void
     {
         $owner = User::factory()->create();

@@ -15,7 +15,12 @@
             @if ($puzzle->moderation_status === 'pending')<p role="status" class="mt-3 rounded border border-amber-300 bg-amber-50 p-3 text-amber-950">This puzzle is pending moderator review but is currently visible under the site-wide preview setting.</p>@endif
             @if ($puzzle->description)<p class="mt-3">{{ $puzzle->description }}</p>@endif
             @if ($puzzle->tags)<p class="mt-3 flex flex-wrap gap-2">@foreach ($puzzle->tags as $tag)<a class="rounded bg-slate-100 px-2 py-1 text-xs underline" href="{{ route('puzzles.index', ['tag' => $tag]) }}">{{ $tag }}</a>@endforeach</p>@endif
-            <p class="mt-3 text-sm text-slate-600">{{ $revision->width }}×{{ $revision->height }} · by {{ $puzzle->owner->name }}</p>
+            <div class="mt-3 flex items-center gap-2 text-sm text-slate-600">
+                @if ($puzzle->owner->avatar_path)
+                    <img src="{{ asset('storage/'.$puzzle->owner->avatar_path) }}" alt="{{ $puzzle->owner->name }}'s profile avatar" class="h-10 w-10 rounded-full object-cover">
+                @endif
+                <span>{{ $revision->width }}×{{ $revision->height }} · by {{ $puzzle->owner->name }}</span>
+            </div>
             @auth
                 @if (auth()->id() === $puzzle->user_id)
                     <form method="post" action="{{ route('puzzles.unpublish', $puzzle) }}" class="mt-4">
