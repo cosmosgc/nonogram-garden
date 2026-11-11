@@ -79,6 +79,21 @@ test('an emulated touchscreen tap marks the selected player cell', async ({ brow
     }
 });
 
+test('restores guest puzzle progress after a page reload', async ({ page }) => {
+    await installGameApi(page);
+    await page.goto('/tests/browser/player.html');
+
+    const cell = page.locator('[data-player-cell="0"]');
+    await cell.click();
+    await expect(cell).toHaveAttribute('aria-label', 'Row 1, column 1: filled');
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('nonogram:guest-progress:12:34'))).not.toBeNull();
+
+    await page.reload();
+
+    await expect(cell).toHaveAttribute('aria-label', 'Row 1, column 1: filled');
+    await expect(page.locator('.progress-status')).toContainText('Guest progress restored from this device');
+});
+
 test('keeps player buttons at least 44 pixels wide and tall on a mobile viewport', async ({ page }) => {
     await installGameApi(page);
     await page.goto('/tests/browser/player.html');
