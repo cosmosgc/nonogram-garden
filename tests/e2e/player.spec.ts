@@ -45,6 +45,20 @@ test('renders square cells and safely auto-crosses a clue-complete row', async (
     await expect(page.locator('[data-player-cell="4"]')).toHaveAttribute('aria-label', 'Row 1, column 5: crossed out');
 });
 
+test('keyboard navigation moves focus between cells and Space marks the focused cell', async ({ page }) => {
+    await installGameApi(page);
+    await page.goto('/tests/browser/player.html');
+
+    const firstCell = page.locator('[data-player-cell="0"]');
+    const secondCell = page.locator('[data-player-cell="1"]');
+    await firstCell.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(secondCell).toBeFocused();
+
+    await page.keyboard.press('Space');
+    await expect(secondCell).toHaveAttribute('aria-label', 'Row 1, column 2: filled');
+});
+
 test('shows server-updated lives after an incorrect fill', async ({ page }) => {
     await installGameApi(page, state(), (_cell, current) => state(false, (current.lives_remaining ?? 1) - 1, true, current.guess_count + 1));
     await page.goto('/tests/browser/player.html');

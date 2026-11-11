@@ -55,6 +55,25 @@ async function clickCell(page: Page, index: number): Promise<void> {
     await page.locator(`[data-accessible-cell="${index}"]`).click();
 }
 
+test('accessible editor grid supports keyboard navigation and activation', async ({ page }) => {
+    draftRoutes(page, { draft: () => draft() });
+    await openEditor(page);
+
+    const accessibleToggle = page.locator('.accessible-toggle');
+    await accessibleToggle.focus();
+    await page.keyboard.press('Enter');
+    await expect(accessibleToggle).toHaveAttribute('aria-expanded', 'true');
+
+    const firstCell = page.locator('[data-accessible-cell="0"]');
+    const secondCell = page.locator('[data-accessible-cell="1"]');
+    await firstCell.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(secondCell).toBeFocused();
+
+    await page.keyboard.press('Enter');
+    await expect(secondCell).toHaveAttribute('aria-label', 'Row 1, column 2: filled');
+});
+
 function draftRoutes(page: Page, options: {
     draft: () => DraftDocument;
     onUpdate?: (route: Route) => Promise<void>;
