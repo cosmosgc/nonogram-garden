@@ -306,7 +306,11 @@ test('a rejected publication shows the server reason and keeps the draft editabl
 
 test('dismissing publish confirmation sends no request and leaves the draft editable', async ({ page }) => {
     let publishRequests = 0;
-    page.on('dialog', dialog => dialog.dismiss());
+    let confirmationMessage: string | null = null;
+    page.on('dialog', async dialog => {
+        confirmationMessage = dialog.message();
+        await dialog.dismiss();
+    });
     draftRoutes(page, { draft: () => draft() });
     await page.route('**/mock/publish/7', async route => {
         publishRequests++;
@@ -316,6 +320,7 @@ test('dismissing publish confirmation sends no request and leaves the draft edit
     await openEditor(page);
     await page.getByRole('button', { name: 'Publish' }).click();
 
+    expect(confirmationMessage).toBe('Publish this puzzle publicly? The published answer will be immutable.');
     expect(publishRequests).toBe(0);
     await expect(page).toHaveURL(/\/tests\/browser\/editor\.html/);
     await expect(page.getByRole('button', { name: 'Publish' })).toBeEnabled();
