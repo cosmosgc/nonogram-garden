@@ -27,12 +27,14 @@ describe('NonogramImageImporter', () => {
             onmessage: ((event: MessageEvent) => void) | null = null;
             onerror: ((event: ErrorEvent) => void) | null = null;
             terminated = false;
-            posted: { id: number; grid?: unknown } | null = null;
+            posted: { id: number; grid?: unknown; file?: File } | null = null;
 
             constructor(readonly url: URL) { FakeWorker.instances.push(this); }
-            postMessage(message: { id: number; grid?: unknown }) {
+            postMessage(message: { id: number; grid?: unknown; file?: File }) {
                 this.posted = message;
-                if (this.url.href.includes('image-conversion.worker')) {
+                if (this.url.href.includes('image-decode.worker')) {
+                    this.onmessage?.({ data: { id: message.id, raster: { width: 2, height: 1, data: new Uint8ClampedArray([0, 0, 0, 255, 255, 255, 255, 255]) } } } as MessageEvent);
+                } else if (this.url.href.includes('image-conversion.worker')) {
                     this.onmessage?.({ data: { id: message.id, grid: { version: 1, width: 2, height: 1, cells: '10' } } } as MessageEvent);
                 }
             }
@@ -57,7 +59,7 @@ describe('NonogramImageImporter', () => {
         await flushPromises();
         await wrapper.findAll('button').find(button => button.text() === 'Analyze uniqueness')!.trigger('click');
 
-        const analyzer = FakeWorker.instances[1];
+        const analyzer = FakeWorker.instances[2];
         expect(wrapper.text()).toContain('Analyzing uniqueness');
         await wrapper.findAll('button').find(button => button.text() === 'Cancel analysis')!.trigger('click');
         expect(analyzer.terminated).toBe(true);
@@ -112,6 +114,40 @@ describe('NonogramImageImporter', () => {
         expect(wrapper.text()).toContain('Client uniqueness result: unique.');
         expect(wrapper.text()).toContain('server performs the authoritative publication check');
         expect(sessionStorage.getItem('nonogram:image-import:7')).toBeNull();
+        wrapper.unmount();
+    });
+
+    it('cancels image decoding and ignores a worker result that arrives afterward', async () => {
+        document.body.innerHTML = '<div id="nonogram-image-importer" data-user-id="7" data-editor-new-url="/editor/new"></div>';
+        class PendingWorker {
+            static instance: PendingWorker;
+            onmessage: ((event: MessageEvent) => void) | null = null;
+            onerror: ((event: ErrorEvent) => void) | null = null;
+            terminated = false;
+            constructor() { PendingWorker.instance = this; }
+            postMessage() {}
+            terminate() { this.terminated = true; }
+        }
+        vi.stubGlobal('Worker', PendingWorker as unknown as typeof Worker);
+        originalCreateObjectURL = URL.createObjectURL;
+        originalRevokeObjectURL = URL.revokeObjectURL;
+        Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:pending') });
+        Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
+
+        const wrapper = mount(NonogramImageImporter, { attachTo: document.getElementById('nonogram-image-importer')! });
+        const input = wrapper.get('input[type="file"]');
+        Object.defineProperty(input.element, 'files', {
+            configurable: true,
+            value: [new File([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], 'pending.png', { type: 'image/png' })],
+        });
+        await input.trigger('change');
+        expect(wrapper.text()).toContain('Decoding image locally…');
+        await wrapper.get('button').trigger('click');
+        expect(PendingWorker.instance.terminated).toBe(true);
+        PendingWorker.instance.onmessage?.({ data: { raster: { width: 1, height: 1, data: new Uint8ClampedArray([0, 0, 0, 255]) } } } as MessageEvent);
+        await flushPromises();
+        expect(wrapper.text()).not.toContain('Decoding image locally…');
+        expect(wrapper.text()).not.toContain('1×1');
         wrapper.unmount();
     });
 

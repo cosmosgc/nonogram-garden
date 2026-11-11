@@ -2,7 +2,7 @@
 import { computed, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { generateClues, validateGrid, type GridDocument } from '../lib/nonogram/grid';
 import { analyzeUniqueness, type UniquenessStatus } from '../lib/nonogram/uniqueness-solver';
-import { gridDensityWarning, imageFileToRaster, rasterToGrid, type FitMode, type RasterImage, type ResizeMethod, type Rotation } from '../lib/nonogram/image-conversion';
+import { gridDensityWarning, imageFileToRaster, rasterToGrid, validateImageLimits, type FitMode, type RasterImage, type ResizeMethod, type Rotation } from '../lib/nonogram/image-conversion';
 
 const root = document.getElementById('nonogram-image-importer');
 const userId = Number(root?.dataset.userId);
@@ -10,6 +10,7 @@ const editorNewUrl = root?.dataset.editorNewUrl ?? '';
 const source = shallowRef<RasterImage | null>(null);
 const fileName = ref('');
 const sourceUrl = ref<string | null>(null);
+const decoding = ref(false);
 const width = ref(10);
 const height = ref(10);
 const threshold = ref(128);
@@ -33,6 +34,9 @@ const converting = ref(false);
 let activeWorker: Worker | null = null;
 let conversionId = 0;
 let conversionTimer: ReturnType<typeof setTimeout> | undefined;
+let decodeWorker: Worker | null = null;
+let decodeGeneration = 0;
+let rejectActiveDecode: ((reason: Error) => void) | null = null;
 
 const clues = computed(() => grid.value ? generateClues(grid.value) : null);
 const filledCells = computed(() => grid.value?.cells.split('').filter(cell => cell === '1').length ?? 0);
@@ -46,6 +50,7 @@ function revokeSourceUrl() {
 
 async function chooseImage(event: Event) {
     cancelConversion();
+    cancelImageDecode();
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) return;
@@ -58,15 +63,92 @@ async function chooseImage(event: Event) {
     analysisMessage.value = '';
     error.value = '';
     fileName.value = file.name;
+    sourceUrl.value = URL.createObjectURL(file);
+    const generation = ++decodeGeneration;
 
     try {
-        const raster = await imageFileToRaster(file);
+        decoding.value = true;
+        let raster: RasterImage;
+        try {
+            raster = await decodeImageInWorker(file, generation);
+        } catch {
+            if (generation !== decodeGeneration) return;
+            raster = await imageFileToRaster(file);
+        }
+        if (generation !== decodeGeneration) return;
         source.value = raster;
-        sourceUrl.value = URL.createObjectURL(file);
     } catch (cause) {
+        if (generation !== decodeGeneration) return;
         fileName.value = '';
         error.value = cause instanceof Error ? cause.message : 'The image could not be loaded.';
+    } finally {
+        if (generation === decodeGeneration) decoding.value = false;
     }
+}
+
+function decodeImageInWorker(file: File, generation: number): Promise<RasterImage> {
+    if (typeof Worker === 'undefined') {
+        return imageFileToRaster(file);
+    }
+
+    return new Promise((resolve, reject) => {
+        let worker: Worker;
+        try {
+            worker = new Worker(new URL('../workers/image-decode.worker.ts', import.meta.url), { type: 'module' });
+        } catch (cause) {
+            reject(cause);
+            return;
+        }
+
+        decodeWorker = worker;
+        rejectActiveDecode = reject;
+        const stopWorker = () => {
+            worker.terminate();
+            if (decodeWorker === worker) decodeWorker = null;
+            if (rejectActiveDecode === reject) rejectActiveDecode = null;
+        };
+        worker.onmessage = event => {
+            if (generation !== decodeGeneration) return;
+            stopWorker();
+            if (event.data.error) {
+                reject(new Error(String(event.data.error)));
+                return;
+            }
+            const raster = event.data.raster as RasterImage | undefined;
+            try {
+                if (!raster || !(raster.data instanceof Uint8ClampedArray)) {
+                    throw new Error('The image decoder returned invalid pixel data.');
+                }
+                validateImageLimits(file.size, raster.width, raster.height);
+                if (raster.data.length !== raster.width * raster.height * 4) {
+                    throw new Error('The image decoder returned invalid pixel data.');
+                }
+                resolve(raster);
+            } catch (cause) {
+                reject(cause);
+            }
+        };
+        worker.onerror = event => {
+            if (generation !== decodeGeneration) return;
+            stopWorker();
+            reject(new Error(event.message || 'Image decoding failed in the worker.'));
+        };
+        try {
+            worker.postMessage({ id: generation, file });
+        } catch (cause) {
+            stopWorker();
+            reject(cause);
+        }
+    });
+}
+
+function cancelImageDecode() {
+    decodeGeneration++;
+    decodeWorker?.terminate();
+    decodeWorker = null;
+    rejectActiveDecode?.(new Error('Image decoding cancelled.'));
+    rejectActiveDecode = null;
+    decoding.value = false;
 }
 
 function cancelAnalysis() {
@@ -266,6 +348,7 @@ function editPuzzle() {
 onUnmounted(() => {
     if (conversionTimer) clearTimeout(conversionTimer);
     cancelConversion();
+    cancelImageDecode();
     cancelAnalysis();
     revokeSourceUrl();
 });
@@ -284,7 +367,12 @@ onUnmounted(() => {
         <label class="block font-medium">Source image
           <input class="mt-2 block w-full" type="file" accept="image/png,image/jpeg,image/webp" :disabled="converting" @change="chooseImage">
         </label>
-        <p v-if="fileName" class="text-sm text-slate-600">{{ fileName }} · {{ source?.width }}×{{ source?.height }}</p>
+        <div v-if="decoding" class="flex items-center gap-3" role="status" aria-live="polite" aria-busy="true">
+          <span class="size-4 animate-spin rounded-full border-2 border-emerald-900 border-r-transparent" aria-hidden="true"></span>
+          <span>Decoding image locally…</span>
+          <button type="button" class="rounded border px-3 py-1" @click="cancelImageDecode">Cancel decode</button>
+        </div>
+        <p v-if="fileName" class="text-sm text-slate-600">{{ fileName }}<template v-if="source"> · {{ source.width }}×{{ source.height }}</template></p>
         <div v-if="sourceUrl" class="rounded border bg-slate-50 p-3">
           <img :src="sourceUrl" alt="Selected image preview, stored only in this browser session" class="mx-auto max-h-72 max-w-full object-contain">
         </div>
