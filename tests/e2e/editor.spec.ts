@@ -199,6 +199,50 @@ test('dragging paints a run, updates clues, and autosaves the grid', async ({ pa
     await expect(page.locator('.save-area [role="status"]')).toContainText('Saved');
 });
 
+test('a browser pointer cancellation ends the editor stroke without painting later cells', async ({ page }) => {
+    let savedCells = '';
+    draftRoutes(page, {
+        draft: () => draft(),
+        onUpdate: async route => {
+            const body = route.request().postDataJSON() as { version: number; grid: { cells: string } };
+            savedCells = body.grid.cells;
+            await route.fulfill({ json: draft(body.version + 1, body.grid.cells) });
+        },
+    });
+
+    await openEditor(page);
+    const canvas = page.locator('canvas');
+    await canvas.evaluate(element => {
+        (element as HTMLCanvasElement).addEventListener('pointerdown', event => {
+            element.setAttribute('data-test-pointer-id', String(event.pointerId));
+        }, { once: true });
+    });
+
+    const firstCell = await cellCenter(page, 0);
+    const lastCellInStroke = await cellCenter(page, 1);
+    const cellAfterCancellation = await cellCenter(page, 2);
+    await page.mouse.move(firstCell.x, firstCell.y);
+    await page.mouse.down();
+    await page.mouse.move(lastCellInStroke.x, lastCellInStroke.y, { steps: 3 });
+
+    const pointerId = Number(await canvas.getAttribute('data-test-pointer-id'));
+    expect(pointerId).toBeGreaterThan(0);
+    await canvas.evaluate((element, activePointerId) => {
+        element.dispatchEvent(new PointerEvent('pointercancel', {
+            bubbles: true,
+            pointerId: activePointerId,
+        }));
+    }, pointerId);
+    await page.mouse.move(cellAfterCancellation.x, cellAfterCancellation.y);
+    await page.mouse.up();
+
+    await page.locator('.accessible-toggle').click();
+    await expect(page.locator('[data-accessible-cell="0"]')).toHaveAttribute('aria-label', 'Row 1, column 1: filled');
+    await expect(page.locator('[data-accessible-cell="1"]')).toHaveAttribute('aria-label', 'Row 1, column 2: filled');
+    await expect(page.locator('[data-accessible-cell="2"]')).toHaveAttribute('aria-label', 'Row 1, column 3: empty');
+    await expect.poll(() => savedCells).toBe('11000' + '0'.repeat(20));
+});
+
 test('pointer hit testing stays accurate after zooming', async ({ page }) => {
     draftRoutes(page, { draft: () => draft() });
 
