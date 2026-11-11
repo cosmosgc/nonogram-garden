@@ -6,7 +6,7 @@
 
 ## A. Browser conversion pipeline
 
-- [~] Build guided import → crop/fit → pixelate/tune → edit/validate flow; support PNG, JPEG, and WebP only for MVP. Import, crop positioning, quarter-turn rotation, fit tuning, and editor handoff work; manual real-device flow validation remains.
+- [~] Build guided import → crop/fit → pixelate/tune → edit/validate flow; support PNG, JPEG, and WebP only for MVP. Import, crop positioning, quarter-turn rotation, fit tuning, and editor handoff work; a real-Laravel browser test now selects and decodes a PNG locally, transfers its generated grid into the editor, saves a draft through the API, and verifies it after reload. Manual real-device flow validation remains.
 - [x] Validate actual decoded type, file byte limit, and image dimensions; reject malformed/unsupported files and handle decode errors without crashing. The browser utility sniffs PNG/JPEG/WebP signatures, decodes with EXIF orientation, caps files at 10 MiB and decoded sources at 4 megapixels, closes rejected bitmaps, and surfaces friendly import errors.
 - [x] Process in-browser by default; do not upload or persist original image unless the user explicitly chooses an upload/save feature. The original is decoded locally and only the resulting grid is passed to the editor through user-scoped session storage.
 - [x] Implement crop, rotate, contain/cover choice, target grid size (each dimension 1–30), and nearest-neighbor / area-average resizing. The importer offers adjustable cover crop positioning, 90-degree rotation increments, contain/cover/stretch fit, target dimensions, and both resize algorithms.
