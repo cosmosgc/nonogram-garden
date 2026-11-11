@@ -26,10 +26,9 @@ return Application::configure(basePath: dirname(__DIR__))
         );
 
         // Replace Laravel's default exception log with a structured, redacted
-        // record. Returning false stops the default logger, whose message and
-        // trace can include query bindings such as puzzle solutions. If the
-        // structured channel cannot be written, fall back to the framework
-        // logger so a failure is never silent.
+        // record. The reporter tries the default channel with that same safe
+        // record if its dedicated channel fails. Returning false prevents
+        // Laravel from writing an unredacted exception message and trace.
         $exceptions->report(function (Throwable $exception): bool {
             $reporter = app(StructuredErrorReporter::class);
 
@@ -37,7 +36,9 @@ return Application::configure(basePath: dirname(__DIR__))
                 return false;
             }
 
-            return $reporter->report($exception) === null;
+            $reporter->report($exception);
+
+            return false;
         });
 
         $exceptions->respond(function (Response $response): Response {

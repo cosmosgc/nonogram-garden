@@ -3,8 +3,10 @@
 namespace App\Http\Requests;
 
 use App\Models\User;
+use App\Services\Profile\AvatarImageProcessor;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Validation\Rule;
 
 class ProfileUpdateRequest extends FormRequest
@@ -23,6 +25,8 @@ class ProfileUpdateRequest extends FormRequest
      */
     public function rules(): array
     {
+        $avatarImageProcessor = new AvatarImageProcessor;
+
         return [
             'name' => ['required', 'string', 'max:255'],
             'username' => [
@@ -35,6 +39,17 @@ class ProfileUpdateRequest extends FormRequest
                 Rule::unique(User::class, 'username')->ignore($this->user()->id),
             ],
             'bio' => ['nullable', 'string', 'max:500'],
+            'avatar' => [
+                'nullable',
+                'file',
+                'max:2048',
+                'extensions:jpg,jpeg,png,webp',
+                function (string $attribute, mixed $value, \Closure $fail) use ($avatarImageProcessor): void {
+                    if ($value instanceof UploadedFile && ! $avatarImageProcessor->supports($value)) {
+                        $fail('The avatar must be a JPEG, PNG, or WebP image no larger than 1024 by 1024 pixels.');
+                    }
+                },
+            ],
             'email' => [
                 'required',
                 'string',

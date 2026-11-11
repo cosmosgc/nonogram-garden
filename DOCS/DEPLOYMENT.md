@@ -4,7 +4,7 @@ This guide is an application checklist, not a substitute for host-specific PHP-F
 
 ## Runtime and secrets
 
-- Use PHP 8.3+ with the extensions listed in the root README, Composer 2, and MySQL 8.0+ (or a tested compatible server). Node.js 22 is used for the Vite build; Node is not needed to serve the compiled app.
+- Use PHP 8.4.1+ with the extensions listed in the root README, Composer 2, and MySQL 8.0+ (or a tested compatible server). Node.js 22 is used for the Vite build; Node is not needed to serve the compiled app.
 - Provision a production database and a dedicated application user. Restrict network access and grant only the database privileges needed to run the app and its migrations.
 - Inject environment variables through the host's secret/configuration manager. At minimum set `APP_ENV=production`, `APP_DEBUG=false`, `APP_URL=https://your-domain`, a persistent secret `APP_KEY`, and production database credentials. Generate an application key once (for example, with `php artisan key:generate --show` in a secure environment) and keep it stable across releases; changing it can invalidate encrypted data and sessions.
 - Set `SESSION_SECURE_COOKIE=true` and `SESSION_SAME_SITE=lax` when serving over HTTPS. Leave `SESSION_DOMAIN` unset unless cross-subdomain sessions are intentionally required. Configure trusted-proxy handling to match the hosting topology so Laravel sees the correct HTTPS scheme and client address.
@@ -20,16 +20,17 @@ npm ci
 npm run build
 ```
 
-Install PHP extensions and inject the environment before running Artisan commands that bootstrap the application. Run migrations once per release, from a controlled deployment job:
+Install PHP extensions (including GD for avatar processing) and inject the environment before running Artisan commands that bootstrap the application. Run migrations once per release, from a controlled deployment job:
 
 ```sh
 php artisan migrate --force
+php artisan storage:link
 php artisan optimize
 ```
 
 The optimized caches include configuration, routes, events, and views. Rebuild them after configuration or route changes; do not cache configuration containing unresolved secrets. Keep `public/` as the web-server document root, deploy the compiled `public/build/` assets with the matching application release, and never expose the repository root, `.env`, `vendor/`, or `storage/` directly. Ensure `storage/` and `bootstrap/cache/` are writable by the PHP runtime, but not world-writable.
 
-Use HTTPS end to end where possible. Redirect HTTP to HTTPS at the edge, set secure response headers at the trusted web-server/proxy layer, and configure proxy trust narrowly. The application currently has no server-side image uploads, scheduled work, or dispatched queue jobs; browser image import stays local. A queue worker or scheduler is therefore not required for the current feature set. Revisit this if asynchronous jobs or scheduled cleanup are introduced.
+Use HTTPS end to end where possible. Redirect HTTP to HTTPS at the edge, set secure response headers at the trusted web-server/proxy layer, and configure proxy trust narrowly. Profile avatars are the only server-side image upload: JPEG, PNG, and WebP inputs are size/dimension limited, decoded, and re-encoded as metadata-free PNGs on the public disk; account deletion and avatar replacement remove the stored file. Browser puzzle-image import stays local. The app has no scheduled work or dispatched queue jobs, so a queue worker or scheduler is not required. Revisit this if asynchronous jobs or scheduled cleanup are introduced.
 
 ## Database, backups, and privacy
 

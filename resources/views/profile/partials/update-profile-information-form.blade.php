@@ -13,7 +13,7 @@
         @csrf
     </form>
 
-    <form method="post" action="{{ route('profile.update') }}" class="mt-6 space-y-6">
+    <form method="post" action="{{ route('profile.update') }}" enctype="multipart/form-data" class="mt-6 space-y-6">
         @csrf
         @method('patch')
 
@@ -34,6 +34,16 @@
             <x-input-label for="bio" :value="__('Bio (optional)')" />
             <textarea id="bio" name="bio" maxlength="500" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">{{ old('bio', $user->bio) }}</textarea>
             <x-input-error class="mt-2" :messages="$errors->get('bio')" />
+        </div>
+
+        <div>
+            <x-input-label for="avatar" :value="__('Avatar (optional)')" />
+            @if ($user->avatar_path)
+                <img src="{{ asset('storage/'.$user->avatar_path) }}" alt="Current profile avatar" class="mb-3 h-20 w-20 rounded-full object-cover">
+            @endif
+            <input id="avatar" name="avatar" type="file" accept="image/jpeg,image/png,image/webp" class="mt-1 block w-full" />
+            <p class="mt-1 text-sm text-gray-600">JPEG, PNG, or WebP; maximum 2 MB and 1024 × 1024 pixels. Upload a new image to replace your avatar.</p>
+            <x-input-error class="mt-2" :messages="$errors->get('avatar')" />
         </div>
 
         <div>

@@ -14,6 +14,8 @@ class AccountDataExportTest extends TestCase
     public function test_verified_user_can_download_only_their_own_account_data(): void
     {
         $owner = User::factory()->create(['email' => 'owner@example.test']);
+        $owner->avatar_path = 'avatars/'.$owner->id.'/avatar.png';
+        $owner->save();
         $puzzle = Puzzle::factory()->create([
             'user_id' => $owner->id,
             'title' => 'My private art',
@@ -39,6 +41,7 @@ class AccountDataExportTest extends TestCase
             ->assertHeader('Content-Disposition', 'attachment; filename="nonogram-account-export-'.$owner->id.'.json"')
             ->assertHeader('Cache-Control', 'max-age=0, no-store, private')
             ->assertJsonPath('profile.email', 'owner@example.test')
+            ->assertJsonPath('profile.avatar_path', 'avatars/'.$owner->id.'/avatar.png')
             ->assertJsonPath('puzzles.0.title', 'My private art')
             ->assertJsonPath('puzzles.0.revisions.0.solution_data', '1')
             ->assertJsonPath('progress.0.elapsed_seconds', 37)

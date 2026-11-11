@@ -5,7 +5,7 @@
     "description": "Community Nonogram puzzle editor and game.",
     "keywords": ["nonogram", "puzzle", "laravel"],
     "require": {
-        "php": "^8.3",
+        "php": "^8.4.1",
         "laravel/framework": "^13.17",
         "laravel/tinker": "^3.0"
     },

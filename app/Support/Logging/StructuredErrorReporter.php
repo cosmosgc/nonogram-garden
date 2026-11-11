@@ -28,7 +28,7 @@ final class StructuredErrorReporter
 
     /**
      * Reports an exception and returns the redacted record that was logged, or
-     * null when the dedicated channel could not be written.
+     * null when neither the dedicated channel nor the safe fallback could be written.
      */
     public function report(Throwable $exception): ?array
     {
@@ -38,8 +38,13 @@ final class StructuredErrorReporter
             Log::channel((string) config('logging.error_report.channel', 'errors'))
                 ->error('unhandled_exception', $record);
         } catch (Throwable) {
-            // Reporting must never replace or mask the original failure. The
-            // caller falls back to the framework logger if this returns null.
+            try {
+                Log::channel((string) config('logging.default', 'stack'))
+                    ->error('unhandled_exception', $record + ['reporter_fallback' => true]);
+            } catch (Throwable) {
+                // Reporting must never replace or mask the original failure.
+            }
+
             return null;
         }
 

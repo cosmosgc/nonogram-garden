@@ -11,7 +11,12 @@
     <main class="mx-auto max-w-5xl p-6">
         <header class="border-b pb-6">
             <p class="text-sm text-slate-600">Creator profile</p>
-            <h1 class="mt-2 text-3xl font-bold">{{ $profile->name }}</h1>
+            <div class="mt-2 flex items-center gap-4">
+                @if ($profile->avatar_path)
+                    <img src="{{ asset('storage/'.$profile->avatar_path) }}" alt="{{ $profile->name }}'s profile avatar" class="h-16 w-16 rounded-full object-cover">
+                @endif
+                <h1 class="text-3xl font-bold">{{ $profile->name }}</h1>
+            </div>
             <p class="mt-1 text-slate-600">{{ '@'.$profile->username }}</p>
             @if ($profile->bio)<p class="mt-4 max-w-2xl whitespace-pre-line">{{ $profile->bio }}</p>@endif
         </header>

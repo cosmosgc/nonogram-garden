@@ -86,6 +86,7 @@ class AccountDataExportController extends Controller
                 'email' => $user->email,
                 'username' => $user->username,
                 'bio' => $user->bio,
+                'avatar_path' => $user->avatar_path,
                 'created_at' => $user->created_at,
             ],
             'puzzles' => $puzzles,

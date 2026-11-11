@@ -146,6 +146,24 @@ class StructuredErrorReportingTest extends TestCase
         $this->assertNotNull($response->headers->get('X-Request-Id'));
     }
 
+    public function test_failed_dedicated_channel_uses_a_redacted_emergency_fallback(): void
+    {
+        config([
+            'logging.channels.error-report-test' => ['driver' => 'unsupported-test-driver'],
+            'logging.channels.emergency.path' => $this->logPath,
+        ]);
+        Route::middleware('web')->get('/__tests/log-fallback', function (): never {
+            throw new RuntimeException('Could not save solution '.self::CELLS);
+        });
+
+        $this->get('/__tests/log-fallback')->assertStatus(500);
+
+        $log = File::get($this->logPath);
+        $this->assertStringNotContainsString(self::CELLS, $log);
+        $this->assertStringContainsString('[redacted:cells]', $log);
+        $this->assertStringContainsString('Unable to create configured logger. Using emergency logger.', $log);
+    }
+
     public function test_request_ids_are_propagated_when_well_formed(): void
     {
         Route::middleware('web')->get('/__tests/ok', fn () => response('ok'));

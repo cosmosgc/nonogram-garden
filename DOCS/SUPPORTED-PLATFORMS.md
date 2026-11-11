@@ -6,7 +6,7 @@ This page records the project's declared runtime targets, CI baseline, and depen
 
 | Component | Supported/target version | Validation status |
 |---|---|---|
-| PHP | 8.3 or newer, with extensions listed in the root README | CI runs PHP 8.3; local verification has also run on PHP 8.5 |
+| PHP | 8.4.1 or newer, with extensions listed in the root README | Lockfile requires at least PHP 8.4.1; CI runs PHP 8.5 |
 | Laravel | `^13.17` (Laravel 13) | CI resolves the committed Composer lockfile; local test run used Laravel 13.40 |
 | Composer | Composer 2 | CI installs Composer 2; lockfile is committed |
 | Node.js | 22 LTS for builds and frontend tests | CI runs Node 22; current local Node is newer |

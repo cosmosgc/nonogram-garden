@@ -7,7 +7,7 @@
 ## A. Creator profiles
 
 - [x] Enforce unique, case-normalized usernames and define allowed characters, reserved names, and rename policy. Usernames allow 3–30 lowercase ASCII letters, digits, or underscores; reserved route/system names are rejected; owners can rename them.
-- [~] Add profile edit flow for display name, username, bio, and avatar (avatar optional for MVP); validate length/type and prevent email disclosure. Name, username, and a 500-character plain-text bio are editable and validated; avatar support remains deferred.
+- [x] Add profile edit flow for display name, username, bio, and optional avatar; validate length/type and prevent email disclosure. Avatars accept JPEG, PNG, and WebP up to 2 MB and 1024 × 1024 pixels, are decoded and re-encoded as metadata-free PNGs, and are removed on replacement/account deletion.
 - [x] Add `/@{username}` profile route with paginated public puzzles and public collections only. Private/unlisted puzzles are excluded; pending public puzzles are included only while the admin-only site-wide preview toggle is enabled.
 - [x] Add tests for case-insensitive route lookup, private email exclusion, hidden puzzle exclusion, and profile authorization.
 
