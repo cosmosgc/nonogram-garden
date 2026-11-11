@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nonogram backlog watch</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header class="top"><div><p class="eyebrow">PROJECT WORKSPACE</p><h1>Nonogram backlog</h1><p class="sub">Live read-only view of Markdown task status</p></div><div class="watch"><span class="pulse"></span> Watching <span id="updated">Connecting…</span></div></header>
+<main>
+  <section class="summary" aria-label="Backlog progress">
+    <article class="card total"><span>Total tasks</span><strong id="total">—</strong></article>
+    <article class="card"><span>To do</span><strong id="todo">—</strong></article>
+    <article class="card"><span>In progress</span><strong id="in_progress">—</strong></article>
+    <article class="card"><span>Done</span><strong id="done">—</strong></article>
+    <article class="card progress"><span>Completion</span><strong><b id="percent">—</b><small>%</small></strong><div class="bar"><i id="bar"></i></div></article>
+  </section>
+  <section class="file-progress-section"><div class="section-title"><h2>Progress by file</h2><span>In-progress tasks count as 50% until marked done.</span></div><div id="file-progress" class="file-progress-grid"></div></section>
+  <section class="toolbar"><div><h2>Tasks</h2><p id="filelist"></p></div><div class="filters"><input id="search" type="search" placeholder="Search tasks…" aria-label="Search tasks"><select id="status"><option value="all">All statuses</option><option value="todo">To do</option><option value="in_progress">In progress</option><option value="done">Done</option></select></div></section>
+  <div id="error" role="alert"></div><div id="groups"></div>
+  <footer>Source: <code>{{ docs_path }}</code><span>Markdown files are authoritative. Edit the files to change status; this board does not write to them.</span></footer>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let data;
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function render(){if(!data)return;const term=$('search').value.toLowerCase(), status=$('status').value;
+ const filtered=data.tasks.filter(t=>(status==='all'||t.status===status)&&(!term||`${t.text} ${t.file} ${t.section}`.toLowerCase().includes(term)));
+ const files=[...new Set(data.files)]; $('filelist').textContent=`${files.length} backlog files · refreshes every 4 seconds`;
+ $('total').textContent=data.summary.total;$('todo').textContent=data.summary.todo;$('in_progress').textContent=data.summary.in_progress;$('done').textContent=data.summary.done;$('percent').textContent=data.summary.completion_percent;$('bar').style.width=data.summary.completion_percent+'%';
+ $('updated').textContent=new Date(data.updated_at).toLocaleTimeString();
+ const groups=new Map();for(const task of filtered){const key=`${task.file} / ${task.section}`;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(task)}
+ $('file-progress').innerHTML=data.file_progress.map(f=>`<article class="file-card"><div class="file-card-heading"><strong>${esc(f.file)}</strong><span>${f.percent}%</span></div><div class="file-bar"><i style="width:${f.percent}%"></i></div><small>${f.done} / ${f.total} tasks complete</small></article>`).join('');
+ $('groups').innerHTML=groups.size?[...groups].map(([name,items])=>`<section class="group"><h3>${esc(name)}<span>${items.length}</span></h3><ul>${items.map(t=>`<li class="task ${t.status}"><span class="mark">${t.status==='done'?'✓':t.status==='in_progress'?'◐':'○'}</span><span class="tasktext">${esc(t.text)}<small>${esc(t.file)}:${t.line}</small><div class="task-progress"><i class="${t.status}" style="width:${t.progress_percent}%"></i></div></span><span class="badge ${t.status}">${t.status==='in_progress'?'In progress':t.status==='done'?'Done':'To do'} · ${t.progress_percent}%</span></li>`).join('')}</ul></section>`).join(''):'<p class="empty">No tasks match these filters.</p>';
+}
+async function refresh(){try{const r=await fetch('/api/tasks',{cache:'no-store'});if(!r.ok)throw Error('Unable to read backlog files');const next=await r.json();if(!data||next.signature!==data.signature){data=next;render()}else{$('updated').textContent=new Date(next.updated_at).toLocaleTimeString()};$('error').textContent=''}catch(e){$('error').textContent=e.message}}
+let appSignature;
+async function watchApp(){try{const r=await fetch('/api/dev-reload',{cache:'no-store'});if(!r.ok)return;const result=await r.json();if(appSignature&&result.signature!==appSignature)location.reload();appSignature=result.signature}catch(e){/* Flask may be restarting after a Python change; retry next poll. */}}
+$('search').addEventListener('input',render);$('status').addEventListener('change',render);refresh();watchApp();setInterval(refresh,4000);setInterval(watchApp,1000);
+</script>
+</body></html>

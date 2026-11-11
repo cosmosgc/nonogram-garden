@@ -1,0 +1,124 @@
+{
+    "mode": "color",
+    "rules_version": 1,
+    "palette": [
+        {"name": "Crimson", "hex": "#C0392B"},
+        {"name": "Ocean", "hex": "#2471A3"}
+    ],
+    "cases": [
+        {
+            "name": "touching different colours",
+            "width": 4,
+            "height": 1,
+            "cells": "1122",
+            "rows": [[[2, 1], [2, 2]]],
+            "columns": [[[1, 1]], [[1, 1]], [[1, 2]], [[1, 2]]]
+        },
+        {
+            "name": "same colour separated by an empty cell",
+            "width": 5,
+            "height": 1,
+            "cells": "11011",
+            "rows": [[[2, 1], [2, 1]]],
+            "columns": [[[1, 1]], [[1, 1]], [], [[1, 1]], [[1, 1]]]
+        },
+        {
+            "name": "empty two by two",
+            "width": 2,
+            "height": 2,
+            "cells": "0000",
+            "rows": [[], []],
+            "columns": [[], []]
+        },
+        {
+            "name": "alternating colours touch",
+            "width": 3,
+            "height": 1,
+            "cells": "121",
+            "rows": [[[1, 1], [1, 2], [1, 1]]],
+            "columns": [[[1, 1]], [[1, 2]], [[1, 1]]]
+        },
+        {
+            "name": "columns read top to bottom",
+            "width": 2,
+            "height": 2,
+            "cells": "1221",
+            "rows": [[[1, 1], [1, 2]], [[1, 2], [1, 1]]],
+            "columns": [[[1, 1], [1, 2]], [[1, 2], [1, 1]]]
+        },
+        {
+            "name": "same colour split by a different colour",
+            "width": 5,
+            "height": 1,
+            "cells": "11211",
+            "rows": [[[2, 1], [1, 2], [2, 1]]],
+            "columns": [[[1, 1]], [[1, 1]], [[1, 2]], [[1, 1]], [[1, 1]]]
+        }
+    ],
+    "solver_cases": [
+        {
+            "name": "empty board is unique",
+            "width": 1,
+            "height": 1,
+            "rows": [[]],
+            "columns": [[]],
+            "color_count": 2,
+            "expected": "unique"
+        },
+        {
+            "name": "touching different colours are unique",
+            "width": 3,
+            "height": 1,
+            "rows": [[[2, 1], [1, 2]]],
+            "columns": [[[1, 1]], [[1, 1]], [[1, 2]]],
+            "color_count": 2,
+            "expected": "unique"
+        },
+        {
+            "name": "same colour runs need a separator",
+            "width": 5,
+            "height": 1,
+            "rows": [[[2, 1], [2, 1]]],
+            "columns": [[[1, 1]], [[1, 1]], [], [[1, 1]], [[1, 1]]],
+            "color_count": 1,
+            "expected": "unique"
+        },
+        {
+            "name": "two diagonal monochrome solutions are ambiguous",
+            "width": 2,
+            "height": 2,
+            "rows": [[[1, 1]], [[1, 1]]],
+            "columns": [[[1, 1]], [[1, 1]]],
+            "color_count": 1,
+            "expected": "ambiguous"
+        },
+        {
+            "name": "run wider than the board is inconsistent",
+            "width": 2,
+            "height": 1,
+            "rows": [[[3, 1]]],
+            "columns": [[[1, 1]], [[1, 1]]],
+            "color_count": 1,
+            "expected": "inconsistent"
+        },
+        {
+            "name": "colour outside the palette is inconsistent",
+            "width": 1,
+            "height": 1,
+            "rows": [[[1, 2]]],
+            "columns": [[[1, 2]]],
+            "color_count": 1,
+            "expected": "inconsistent"
+        },
+        {
+            "name": "zero node budget reports unknown",
+            "width": 1,
+            "height": 1,
+            "rows": [[[1, 1]]],
+            "columns": [[[1, 1]]],
+            "color_count": 1,
+            "limits": { "nodeLimit": 0 },
+            "expected": "unknown"
+        }
+    ]
+}

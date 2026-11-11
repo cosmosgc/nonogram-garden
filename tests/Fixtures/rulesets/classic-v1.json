@@ -1,0 +1,71 @@
+{
+    "mode": "classic",
+    "rules_version": 1,
+    "format_version": 1,
+    "cases": [
+        {
+            "name": "single filled cell",
+            "width": 1,
+            "height": 1,
+            "cells": "1",
+            "rows": [[1]],
+            "columns": [[1]]
+        },
+        {
+            "name": "single empty cell",
+            "width": 1,
+            "height": 1,
+            "cells": "0",
+            "rows": [[0]],
+            "columns": [[0]]
+        },
+        {
+            "name": "empty two by two",
+            "width": 2,
+            "height": 2,
+            "cells": "0000",
+            "rows": [[0], [0]],
+            "columns": [[0], [0]]
+        },
+        {
+            "name": "full two by two",
+            "width": 2,
+            "height": 2,
+            "cells": "1111",
+            "rows": [[2], [2]],
+            "columns": [[2], [2]]
+        },
+        {
+            "name": "rectangular mixed runs",
+            "width": 4,
+            "height": 3,
+            "cells": "011010011000",
+            "rows": [[2], [1, 1], [1]],
+            "columns": [[2], [1], [1], [1]]
+        },
+        {
+            "name": "alternating single cells",
+            "width": 5,
+            "height": 1,
+            "cells": "10101",
+            "rows": [[1, 1, 1]],
+            "columns": [[1], [0], [1], [0], [1]]
+        },
+        {
+            "name": "separated repeated runs",
+            "width": 5,
+            "height": 1,
+            "cells": "11011",
+            "rows": [[2, 2]],
+            "columns": [[1], [1], [0], [1], [1]]
+        },
+        {
+            "name": "empty line beside filled line",
+            "width": 3,
+            "height": 2,
+            "cells": "000111",
+            "rows": [[0], [3]],
+            "columns": [[1], [1], [1]]
+        }
+    ]
+}

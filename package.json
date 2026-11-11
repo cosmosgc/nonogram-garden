@@ -1,0 +1,45 @@
+{
+    "$schema": "https://www.schemastore.org/package.json",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "build": "vite build",
+        "dev": "vite",
+        "typecheck": "vue-tsc --noEmit",
+        "test:unit": "vitest run resources/js",
+        "test:e2e": "playwright test"
+    },
+    "devDependencies": {
+        "@playwright/test": "^1.65.0",
+        "@tailwindcss/forms": "^0.5.2",
+        "@tailwindcss/vite": "^4.3.5",
+        "@vitejs/plugin-vue": "^6.0.10",
+        "@vue/test-utils": "^2.4.11",
+        "alpinejs": "^3.4.2",
+        "autoprefixer": "^10.4.2",
+        "concurrently": "^10.0.3",
+        "jsdom": "^31.0.0",
+        "laravel-vite-plugin": "^3.1",
+        "postcss": "^8.4.31",
+        "tailwindcss": "^4.3.5",
+        "typescript": "^6.0.3",
+        "vite": "^8.0.0",
+        "vitest": "^5.1.0",
+        "vue-tsc": "^3.3.14"
+    },
+    "optionalDependencies": {
+        "@laravel/multiplex": "^0.4.1"
+    },
+    "dependencies": {
+        "pinia": "^4.1.0",
+        "vue": "^3.5.45"
+    },
+    "overrides": {
+        "editorconfig": {
+            "minimatch": "^11.0.6"
+        },
+        "js-beautify": {
+            "glob": "^14.0.4"
+        }
+    }
+}
