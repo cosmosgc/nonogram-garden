@@ -28,7 +28,7 @@ Do not mark a task complete until its acceptance criteria pass. Keep implementat
 - The Classic and Color Picross v1 editors, immutable publishing, moderation, clue-only play, server-verified progress, profiles, collections, and local image conversion are implemented with automated coverage.
 - Optional author tags and public tag filtering are implemented. Difficulty remains deferred until a shared rating definition exists.
 - Structured error reporting is implemented: a dedicated JSON-lines `errors` log with request correlation ids, an argument-free trace summary, and redaction of bodies, credentials, e-mail addresses, solutions, clues, marks, and image data.
-- Release work remains: manual real-device/accessibility checks, retention and backup-erasure policy, legal/security review, production-scale query plans, and deployment-specific recovery validation.
+- Release work remains: fix/confirm the editor's held-key drawing behavior, complete manual keyboard and assistive-technology review, and finish remaining manual UX review (deferred by the user until the end of development). The user has confirmed physical-device touch, browser certification, performance, recovery, deployment, retention-policy approval, and release readiness.
 - Mega Picross remains gated on a documented rules convention; do not infer Clip Picross mechanics.
 
 ## Working rules
