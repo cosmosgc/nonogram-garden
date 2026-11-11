@@ -133,3 +133,52 @@ test('the image importer fits a mobile viewport and transfers into a saved draft
         ? 'Row 1, column 1: filled'
         : 'Row 1, column 1: empty');
 });
+
+test('JPEG and WebP files decode locally and generate image-import previews', async ({ page }) => {
+    await page.goto('/login');
+    await page.getByLabel('Email').fill('test@example.com');
+    await page.getByLabel('Password').fill('password');
+    await page.getByRole('button', { name: 'Log in' }).click();
+    await expect(page).toHaveURL(/\/dashboard$/);
+
+    await page.goto('/editor/import');
+    const encodedImages = await page.evaluate(async () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 2;
+        canvas.height = 1;
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error('A 2D canvas context is unavailable.');
+        context.fillStyle = '#000000';
+        context.fillRect(0, 0, 1, 1);
+        context.fillStyle = '#ffffff';
+        context.fillRect(1, 0, 1, 1);
+
+        const encode = async (mimeType: 'image/jpeg' | 'image/webp') => {
+            const blob = await new Promise<Blob>((resolve, reject) => {
+                canvas.toBlob(image => image ? resolve(image) : reject(new Error(`Could not encode ${mimeType} fixture.`)), mimeType);
+            });
+            if (blob.type !== mimeType) throw new Error(`This browser cannot encode ${mimeType}.`);
+
+            return { mimeType, bytes: Array.from(new Uint8Array(await blob.arrayBuffer())) };
+        };
+
+        return [await encode('image/jpeg'), await encode('image/webp')];
+    });
+
+    for (const { mimeType, bytes } of encodedImages) {
+        const extension = mimeType === 'image/jpeg' ? 'jpg' : 'webp';
+        const fileName = `sample.${extension}`;
+        await page.getByLabel('Source image').setInputFiles({
+            name: fileName,
+            mimeType,
+            buffer: Buffer.from(bytes),
+        });
+
+        await expect(page.getByText(`${fileName} · 2×1`)).toBeVisible();
+        const updatePreview = page.getByRole('button', { name: 'Update preview now' });
+        await expect(updatePreview).toBeEnabled();
+        await updatePreview.click();
+        await expect(page.getByRole('img', { name: 'Generated 10 by 10 monochrome grid' })).toBeVisible();
+        await expect(page.getByRole('alert')).toHaveCount(0);
+    }
+});
