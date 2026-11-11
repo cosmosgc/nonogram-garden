@@ -18,6 +18,15 @@ beforeEach(() => { vi.useFakeTimers(); localStorage.clear(); });
 afterEach(() => { vi.useRealTimers(); document.body.innerHTML = ''; localStorage.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('NonogramPlayer', () => {
+    it('announces empty row and column clues as empty', async () => {
+        const wrapper = mountPlayer(2, 1, [[0]], [[0], [0]]);
+        await flushPromises();
+
+        expect(wrapper.get('tbody th .sr-only').text()).toBe('Row 1 clue: empty');
+        expect(wrapper.get('thead th:nth-child(2) .sr-only').text()).toBe('Column 1 clue: empty');
+        wrapper.unmount();
+    });
+
     it('renders clue-only grid data and supports mark tools and keyboard navigation', async () => {
         const wrapper = mountPlayer();
         await flushPromises();

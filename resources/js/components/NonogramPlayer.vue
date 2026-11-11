@@ -366,7 +366,11 @@ function label(index: number): string {
 }
 
 function clueText(clue: PlayerClue): string {
-    if (!colorMode) return (clue as Clue).join(' ');
+    if (!colorMode) {
+        const clues = clue as Clue;
+
+        return clues.length === 0 || (clues.length === 1 && clues[0] === 0) ? 'empty' : clues.join(' ');
+    }
     return (clue as ColorClue[]).map(([length, colorId]) => `${length} ${palette[colorId - 1]?.name ?? `colour ${colorId}`}`).join(', ') || 'empty';
 }
 

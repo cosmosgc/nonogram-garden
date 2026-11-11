@@ -261,6 +261,16 @@ function clueLabel(line: number[] | [number, number][], clueMode: 'classic' | 'c
     return (line as [number, number][]).map(([length, colorId]) => `${length} ${palette.value[colorId - 1]?.name ?? `color ${colorId}`}`).join(', ') || 'empty';
 }
 
+function accessibleClueLabel(line: number[] | [number, number][], clueMode: 'classic' | 'color'): string {
+    if (clueMode === 'classic') {
+        const clues = line as number[];
+
+        return clues.length === 0 || (clues.length === 1 && clues[0] === 0) ? 'empty' : clues.join(' ');
+    }
+
+    return clueLabel(line, clueMode);
+}
+
 function colorClueSymbol(colorId: number): string {
     return ['●', '◆', '▲', '■', '✚', '⬟', '★', '⬢'][colorId - 1] ?? '●';
 }
@@ -795,9 +805,9 @@ onUnmounted(() => {
         <button class="accessible-toggle" :aria-expanded="accessibleView" @click="accessibleView = !accessibleView">{{ accessibleView ? 'Hide accessible cell grid' : 'Show accessible cell grid' }}</button>
         <div v-if="accessibleView" class="accessible-grid-wrap">
           <table class="accessible-grid" aria-label="Nonogram cell editor">
-            <thead><tr><th scope="col">Row clues</th><th v-for="(line, x) in clues.columns" :key="x" scope="col">Column {{ x + 1 }} clue: {{ clueLabel(line, clues.mode) }}</th></tr></thead>
+            <thead><tr><th scope="col">Row clues</th><th v-for="(line, x) in clues.columns" :key="x" scope="col">Column {{ x + 1 }} clue: {{ accessibleClueLabel(line, clues.mode) }}</th></tr></thead>
             <tbody><tr v-for="(line, y) in clues.rows" :key="y">
-              <th scope="row">Row {{ y + 1 }} clue: {{ line.join(' ') }}</th>
+              <th scope="row">Row {{ y + 1 }} clue: {{ accessibleClueLabel(line, clues.mode) }}</th>
               <td v-for="x in width" :key="x"><button type="button" :data-accessible-cell="y * width + x - 1"
                 :tabindex="activeIndex === y * width + x - 1 ? 0 : -1"
                 :aria-label="accessibleCellLabel(y * width + x - 1)"

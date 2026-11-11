@@ -346,6 +346,15 @@ describe('NonogramEditor', () => {
         wrapper.unmount();
     });
 
+    it('announces empty row and column clues in the semantic grid', async () => {
+        const wrapper = mount(NonogramEditor, { attachTo: document.body });
+        await wrapper.get('.accessible-toggle').trigger('click');
+
+        expect(wrapper.get('.accessible-grid thead th:nth-child(2)').text()).toBe('Column 1 clue: empty');
+        expect(wrapper.get('.accessible-grid tbody th').text()).toBe('Row 1 clue: empty');
+        wrapper.unmount();
+    });
+
     it('does not expose the answer in the accessible grid during test play', async () => {
         const wrapper = mount(NonogramEditor, { attachTo: document.body });
         const dimensions = wrapper.findAll('input[type="number"]');
