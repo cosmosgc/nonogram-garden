@@ -92,6 +92,39 @@ test('keeps editor controls and accessible cells at least 44 pixels wide and tal
     }
 });
 
+test('scopes touch-action suppression to the canvas and accepts a touch stroke', async ({ browser }) => {
+    const context = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        isMobile: true,
+        hasTouch: true,
+    });
+
+    try {
+        const page = await context.newPage();
+        draftRoutes(page, { draft: () => draft() });
+        await openEditor(page);
+
+        const canvas = page.locator('.editor-page canvas');
+        const canvasBox = await canvas.boundingBox();
+        expect(canvasBox).not.toBeNull();
+        await canvas.tap({
+            position: { x: canvasBox!.width / (WIDTH * 2), y: canvasBox!.height / (HEIGHT * 2) },
+        });
+
+        const touchActions = await page.locator('.editor-page').evaluate(editor => ({
+            canvas: getComputedStyle(editor.querySelector('canvas')!).touchAction,
+            editor: getComputedStyle(editor).touchAction,
+        }));
+
+        expect(touchActions.canvas).toBe('none');
+        expect(touchActions.editor).toBe('auto');
+        await page.locator('.accessible-toggle').click();
+        await expect(page.locator('[data-accessible-cell="0"]')).toHaveAttribute('aria-label', 'Row 1, column 1: filled');
+    } finally {
+        await context.close();
+    }
+});
+
 test('renders the maximum 30-by-30 accessible grid within two seconds', async ({ page }) => {
     draftRoutes(page, { draft: () => draft() });
     await openEditor(page);

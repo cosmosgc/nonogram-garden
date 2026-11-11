@@ -846,6 +846,7 @@ onUnmounted(() => {
 .editor-page .settings button,.editor-page .save-area button,.editor-page .accessible-toggle{min-height:44px;min-width:44px}
 .editor-page .settings input,.editor-page .settings textarea{min-height:44px;font:inherit}
 .editor-page .accessible-grid td button{width:44px;height:44px}
+.editor-page canvas{touch-action:none}
 .editor-page button:focus-visible,.editor-page input:focus-visible,.editor-page textarea:focus-visible{outline:3px solid #2478c8;outline-offset:2px}
 .palette-controls{display:grid!important;grid-template-columns:1fr;gap:8px!important}.palette-controls>p{margin:0;font-size:12px}.palette-entry{display:grid;grid-template-columns:44px minmax(70px,1fr) minmax(80px,1fr) auto;align-items:center;gap:6px}.palette-entry label{display:block}.palette-entry input{width:100%;min-width:0;padding:6px;border:1px solid #9aa69c;border-radius:5px}.palette-select{background:var(--palette-color)!important;color:#fff!important;text-shadow:0 1px 2px #000}.palette-controls>button,.mode-picker button{min-height:40px}.editor-page .clue-line span[title]{font-weight:700;text-shadow:0 0 1px #fff}.editor-page .save-area{flex-wrap:wrap}
 @media(forced-colors:active){.editor-page button[aria-pressed="true"]{border:2px solid ButtonText}}
