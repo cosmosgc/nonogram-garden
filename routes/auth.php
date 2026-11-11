@@ -64,5 +64,6 @@ Route::middleware('auth')->group(function () {
         ->name('password.update');
 
     Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])
+        ->middleware('throttle:application')
         ->name('logout');
 });

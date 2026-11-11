@@ -42,6 +42,7 @@ class AppServiceProvider extends ServiceProvider
             'password.store' => 10,
             'password.update' => 10,
             'password.confirm' => 10,
+            'logout' => 10,
             'verification.verify' => 6,
             'verification.send' => 6,
             'collections.index' => 60,
