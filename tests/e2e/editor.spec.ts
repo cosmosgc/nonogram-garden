@@ -92,6 +92,26 @@ test('keeps editor controls and accessible cells at least 44 pixels wide and tal
     }
 });
 
+test('renders the maximum 30-by-30 accessible grid within two seconds', async ({ page }) => {
+    draftRoutes(page, { draft: () => draft() });
+    await openEditor(page);
+
+    const width = page.getByLabel('Width');
+    await width.fill('30');
+    await width.press('Tab');
+    const height = page.getByLabel('Height');
+    await height.fill('30');
+    await height.press('Tab');
+
+    const renderStartedAt = await page.evaluate(() => performance.now());
+    await page.locator('.accessible-toggle').click();
+    await expect(page.locator('[data-accessible-cell="899"]')).toBeAttached();
+    const renderDuration = await page.evaluate(startedAt => performance.now() - startedAt, renderStartedAt);
+
+    await expect(page.locator('.accessible-grid [data-accessible-cell]')).toHaveCount(900);
+    expect(renderDuration).toBeLessThan(2000);
+});
+
 function draftRoutes(page: Page, options: {
     draft: () => DraftDocument;
     onUpdate?: (route: Route) => Promise<void>;

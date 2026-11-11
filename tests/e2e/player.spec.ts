@@ -99,6 +99,8 @@ test('keeps player buttons at least 44 pixels wide and tall on a mobile viewport
     await page.goto('/tests/browser/player.html');
     await expect(page.locator('[data-player-cell="0"]')).toBeVisible();
     await page.setViewportSize({ width: 390, height: 844 });
+    const zoomOut = page.getByRole('button', { name: 'Zoom out' });
+    await expect(zoomOut).toBeDisabled();
 
     const targetSizes = await page.locator('.player-page button:visible').evaluateAll(buttons => buttons.map(button => {
         const { width, height } = button.getBoundingClientRect();
@@ -111,8 +113,6 @@ test('keeps player buttons at least 44 pixels wide and tall on a mobile viewport
         expect(height).toBeGreaterThanOrEqual(44);
     }
 
-    const zoomOut = page.getByRole('button', { name: 'Zoom out' });
-    await expect(zoomOut).toBeDisabled();
     await page.setViewportSize({ width: 1280, height: 800 });
     await expect(zoomOut).toBeEnabled();
 });

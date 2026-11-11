@@ -58,6 +58,30 @@ class PuzzleDraftTest extends TestCase
         ]);
     }
 
+    public function test_maximum_size_draft_request_validates_and_creates_within_two_seconds(): void
+    {
+        $owner = User::factory()->create();
+        $this->actingAs($owner);
+        $grid = ['version' => 1, 'width' => 30, 'height' => 30, 'cells' => str_repeat('10100', 180)];
+
+        $startedAt = hrtime(true);
+        $response = $this->postJson('/puzzles/drafts', ['grid' => $grid]);
+        $elapsedMilliseconds = (hrtime(true) - $startedAt) / 1_000_000;
+
+        $response->assertCreated()
+            ->assertJsonPath('grid.width', 30)
+            ->assertJsonPath('grid.height', 30)
+            ->assertJsonPath('grid.cells', $grid['cells']);
+        $this->assertDatabaseHas('puzzles', [
+            'id' => $response->json('id'),
+            'user_id' => $owner->id,
+            'width' => 30,
+            'height' => 30,
+            'draft_cells' => $grid['cells'],
+        ]);
+        self::assertLessThan(2000, $elapsedMilliseconds, 'Maximum 30×30 draft validation and creation exceeded the 2-second regression budget.');
+    }
+
     public function test_owner_can_save_and_reload_a_color_draft_with_its_palette(): void
     {
         $owner = User::factory()->create();
