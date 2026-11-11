@@ -59,6 +59,40 @@ test('keyboard navigation moves focus between cells and Space marks the focused 
     await expect(secondCell).toHaveAttribute('aria-label', 'Row 1, column 2: filled');
 });
 
+test('keeps player buttons at least 44 pixels wide and tall on a mobile viewport', async ({ page }) => {
+    await installGameApi(page);
+    await page.goto('/tests/browser/player.html');
+    await expect(page.locator('[data-player-cell="0"]')).toBeVisible();
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    const targetSizes = await page.locator('.player-page button:visible').evaluateAll(buttons => buttons.map(button => {
+        const { width, height } = button.getBoundingClientRect();
+
+        return { width, height };
+    }));
+    expect(targetSizes.length).toBeGreaterThan(0);
+    for (const { width, height } of targetSizes) {
+        expect(width).toBeGreaterThanOrEqual(44);
+        expect(height).toBeGreaterThanOrEqual(44);
+    }
+
+    const zoomOut = page.getByRole('button', { name: 'Zoom out' });
+    await expect(zoomOut).toBeDisabled();
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect(zoomOut).toBeEnabled();
+});
+
+test('preserves forced-colour pressed-state outlines and reduced motion', async ({ page }) => {
+    await installGameApi(page);
+    await page.goto('/tests/browser/player.html');
+    await page.emulateMedia({ forcedColors: 'active', reducedMotion: 'reduce' });
+
+    const pressedTool = page.locator('.player-tools button[aria-pressed="true"]');
+    await expect(pressedTool).toHaveCSS('border-top-width', '2px');
+    const transitionDuration = await pressedTool.evaluate(button => getComputedStyle(button).transitionDuration);
+    expect(Number.parseFloat(transitionDuration)).toBeLessThanOrEqual(0.00001);
+});
+
 test('shows server-updated lives after an incorrect fill', async ({ page }) => {
     await installGameApi(page, state(), (_cell, current) => state(false, (current.lives_remaining ?? 1) - 1, true, current.guess_count + 1));
     await page.goto('/tests/browser/player.html');

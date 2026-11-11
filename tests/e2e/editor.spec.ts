@@ -74,6 +74,24 @@ test('accessible editor grid supports keyboard navigation and activation', async
     await expect(secondCell).toHaveAttribute('aria-label', 'Row 1, column 2: filled');
 });
 
+test('keeps editor controls and accessible cells at least 44 pixels wide and tall on mobile', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    draftRoutes(page, { draft: () => draft() });
+    await openEditor(page);
+    await page.locator('.accessible-toggle').click();
+
+    const targetSizes = await page.locator('.editor-page button:visible').evaluateAll(buttons => buttons.map(button => {
+        const { width, height } = button.getBoundingClientRect();
+
+        return { width, height };
+    }));
+    expect(targetSizes.length).toBeGreaterThan(0);
+    for (const { width, height } of targetSizes) {
+        expect(width).toBeGreaterThanOrEqual(44);
+        expect(height).toBeGreaterThanOrEqual(44);
+    }
+});
+
 function draftRoutes(page: Page, options: {
     draft: () => DraftDocument;
     onUpdate?: (route: Route) => Promise<void>;

@@ -16,6 +16,9 @@ const colorMode = mode === 'color';
 const palette = JSON.parse(root?.dataset.palette ?? '[]') as ColorPaletteEntry[];
 const rowClues = JSON.parse(root?.dataset.rowClues ?? '[]') as PlayerClue[];
 const columnClues = JSON.parse(root?.dataset.columnClues ?? '[]') as PlayerClue[];
+const compactViewport = typeof window.matchMedia === 'function'
+    ? window.matchMedia('(max-width: 640px)')
+    : null;
 const puzzleId = Number(root?.dataset.puzzleId);
 const revisionId = Number(root?.dataset.revisionId);
 const progressUrl = root?.dataset.progressUrl;
@@ -32,7 +35,8 @@ const cursorX = ref(0);
 const cursorY = ref(0);
 const pointerCursorIndex = ref<number | null>(null);
 const gamepadCursors = ref<Record<number, { x: number; y: number }>>({});
-const cellSize = ref(36);
+const minimumCellSize = ref(compactViewport?.matches ? 44 : 24);
+const cellSize = ref(Math.max(36, minimumCellSize.value));
 const autoCross = ref(true);
 const hardcoreMode = ref(false);
 const livesRemaining = ref<number | null>(null);
@@ -818,7 +822,13 @@ function togglePause() {
     scheduleProgressSave();
 }
 
+function updateMinimumCellSize(event: MediaQueryListEvent) {
+    minimumCellSize.value = event.matches ? 44 : 24;
+    cellSize.value = Math.max(cellSize.value, minimumCellSize.value);
+}
+
 onMounted(() => {
+    compactViewport?.addEventListener('change', updateMinimumCellSize);
     window.addEventListener('keydown', onGlobalKeyboard);
     window.addEventListener('pointerup', stopPainting);
     window.addEventListener('pointercancel', stopPainting);
@@ -842,6 +852,7 @@ onMounted(() => {
     })();
 });
 onUnmounted(() => {
+    compactViewport?.removeEventListener('change', updateMinimumCellSize);
     if (timer) clearInterval(timer);
     if (gamepadTimer) clearInterval(gamepadTimer);
     window.removeEventListener('keydown', onGlobalKeyboard);
@@ -878,7 +889,7 @@ onUnmounted(() => {
         <button v-if="serverCompleted && !replayMode" @click="startReplay">Play again</button>
         <button v-else-if="serverCompleted && replayMode" @click="exitReplay">Back to completed result</button>
         <button v-if="authenticated" :disabled="!progressReady || progressConflict || serverCompleted" @click="saveProgress">Save progress</button>
-        <button aria-label="Zoom out" :disabled="cellSize <= 24" @click="cellSize = Math.max(24, cellSize - 4)">−</button>
+        <button aria-label="Zoom out" :disabled="cellSize <= minimumCellSize" @click="cellSize = Math.max(minimumCellSize, cellSize - 4)">−</button>
         <button aria-label="Zoom in" :disabled="cellSize >= 52" @click="cellSize = Math.min(52, cellSize + 4)">+</button>
       </div>
     </div>
