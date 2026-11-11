@@ -38,7 +38,7 @@
 
 ## D. Publish workflow and revisions
 
-- [~] Add publish action behind owner policy and server-side validation; regenerate clues/hash from canonical solution. Owner-confirmed publish endpoint and editor action exist; final manual UX/error polish remains.
+- [~] Add publish action behind owner policy and server-side validation; regenerate clues/hash from canonical solution. Owner-confirmed publish endpoint and editor action exist; Chromium, Firefox, and WebKit tests cover confirmation dismissal without a request, rejected publication feedback, and editability after failure. Remaining release UX polish requires manual review.
 - [x] Implement uniqueness solver or a bounded server-side analysis service that reports `unique`, `ambiguous`, `inconsistent`, or `unknown/timeout`. Never treat timeout as verified unique. The bounded, mode-neutral Classic solver is integrated into publishing; candidate, node, and time limits are tested.
 - [x] Require verified unique status for public publishing per MVP; show actionable validation errors and preserve draft on failure. Ambiguous/inconsistent/timeout outcomes block publication; the server returns the exact uniqueness state and leaves the draft unchanged.
 - [x] Publish transactionally: create immutable numbered revision and update puzzle's published revision pointer/status/time atomically. Prevent updates to published revision data.
