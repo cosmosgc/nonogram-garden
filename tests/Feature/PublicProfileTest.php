@@ -13,6 +13,33 @@ class PublicProfileTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_authenticated_navigation_has_a_visible_profile_settings_link(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->get('/');
+        $response
+            ->assertOk()
+            ->assertSee('href="'.route('profile.edit').'"', false)
+            ->assertSee('Edit profile')
+            ->assertSee('<details class="site-menu">', false);
+
+        $content = $response->getContent();
+        $profileLinkPosition = strpos($content, 'href="'.route('profile.edit').'"');
+        $menuPosition = strpos($content, '<details class="site-menu">');
+        $this->assertIsInt($profileLinkPosition);
+        $this->assertIsInt($menuPosition);
+        $this->assertLessThan($menuPosition, $profileLinkPosition);
+    }
+
+    public function test_guest_navigation_does_not_show_the_profile_settings_link(): void
+    {
+        $this->get('/')
+            ->assertOk()
+            ->assertDontSee('href="'.route('profile.edit').'"', false)
+            ->assertSee('Log in');
+    }
+
     public function test_user_can_set_a_normalized_public_username_and_bio_without_exposing_email(): void
     {
         $user = User::factory()->create();

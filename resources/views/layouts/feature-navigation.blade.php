@@ -1,6 +1,9 @@
 <header class="site-header">
     <nav class="site-nav" aria-label="Main navigation">
         <a href="{{ route('home') }}" class="site-brand"><span class="brand-mark" aria-hidden="true">▦</span><span>Nonogram<span class="brand-period">.</span></span></a>
+        @auth
+            <a href="{{ route('profile.edit') }}" class="inline-flex min-h-11 items-center rounded-full border border-emerald-900 px-4 py-2 text-sm font-semibold text-emerald-950 hover:bg-emerald-50">Edit profile</a>
+        @endauth
         <details class="site-menu">
             <summary aria-label="Toggle navigation">Menu <span aria-hidden="true">⌄</span></summary>
             <div class="site-links">
