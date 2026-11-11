@@ -59,6 +59,26 @@ test('keyboard navigation moves focus between cells and Space marks the focused 
     await expect(secondCell).toHaveAttribute('aria-label', 'Row 1, column 2: filled');
 });
 
+test('an emulated touchscreen tap marks the selected player cell', async ({ browser }) => {
+    const context = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        isMobile: true,
+        hasTouch: true,
+    });
+
+    try {
+        const page = await context.newPage();
+        await installGameApi(page);
+        await page.goto('http://127.0.0.1:5173/tests/browser/player.html');
+        const cell = page.locator('[data-player-cell="0"]');
+        await cell.tap();
+
+        await expect(cell).toHaveAttribute('aria-label', 'Row 1, column 1: filled');
+    } finally {
+        await context.close();
+    }
+});
+
 test('keeps player buttons at least 44 pixels wide and tall on a mobile viewport', async ({ page }) => {
     await installGameApi(page);
     await page.goto('/tests/browser/player.html');
