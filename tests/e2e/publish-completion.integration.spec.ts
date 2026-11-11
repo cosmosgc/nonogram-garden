@@ -44,13 +44,14 @@ test('an authenticated author publishes, moderates, and completes a puzzle throu
     await expect(page.locator('.progress-status')).toContainText('already verified as complete');
 });
 
-test('a locally decoded image transfers into a saved editable puzzle draft', async ({ page }) => {
+test('the image importer fits a mobile viewport and transfers into a saved draft', async ({ page }) => {
     await page.goto('/login');
     await page.getByLabel('Email').fill('test@example.com');
     await page.getByLabel('Password').fill('password');
     await page.getByRole('button', { name: 'Log in' }).click();
     await expect(page).toHaveURL(/\/dashboard$/);
 
+    await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/editor/import');
     const imageBytes = await page.evaluate(async () => {
         const canvas = document.createElement('canvas');
@@ -80,6 +81,28 @@ test('a locally decoded image transfers into a saved editable puzzle draft', asy
     const generatedGrid = page.getByRole('img', { name: 'Generated 1 by 1 monochrome grid' });
     await expect(generatedGrid).toBeVisible();
     await expect(page.getByText('1×1 ·')).toBeVisible();
+    const mobileLayout = await page.locator('main').evaluate(main => {
+        const viewportWidth = document.documentElement.clientWidth;
+        const visibleControls = Array.from(main.querySelectorAll<HTMLElement>('input, select, button, [role="img"], img'))
+            .filter(element => element.getClientRects().length > 0)
+            .map(element => {
+                const { left, right } = element.getBoundingClientRect();
+
+                return { left, right };
+            });
+
+        return {
+            viewportWidth,
+            documentWidth: document.documentElement.scrollWidth,
+            visibleControls,
+        };
+    });
+    expect(mobileLayout.viewportWidth).toBe(390);
+    expect(mobileLayout.documentWidth).toBeLessThanOrEqual(mobileLayout.viewportWidth);
+    for (const { left, right } of mobileLayout.visibleControls) {
+        expect(left).toBeGreaterThanOrEqual(0);
+        expect(right).toBeLessThanOrEqual(mobileLayout.viewportWidth + 0.5);
+    }
     const generatedCellClass = await generatedGrid.locator('span').getAttribute('class');
     expect(generatedCellClass).not.toBeNull();
     const generatedCellIsFilled = generatedCellClass!.includes('bg-slate-900');
