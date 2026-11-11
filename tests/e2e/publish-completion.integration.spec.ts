@@ -53,6 +53,13 @@ test('the image importer fits a mobile viewport and transfers into a saved draft
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/editor/import');
+    const importerPostRequests: string[] = [];
+    page.on('request', request => {
+        if (request.method() === 'POST') {
+            importerPostRequests.push(request.url());
+        }
+    });
+
     const imageBytes = await page.evaluate(async () => {
         const canvas = document.createElement('canvas');
         canvas.width = 1;
@@ -111,6 +118,7 @@ test('the image importer fits a mobile viewport and transfers into a saved draft
     await expect(page.locator('.editor-page')).toBeVisible();
     await expect(page.getByLabel('Title')).toHaveValue('Imported image puzzle');
     await expect(page.locator('.save-area [role="status"]')).toContainText('Image grid imported. Save to create a draft.');
+    expect(importerPostRequests).toEqual([]);
     await page.locator('.accessible-toggle').click();
     const importedCell = page.locator('[data-accessible-cell="0"]');
     await expect(importedCell).toHaveAttribute('aria-label', generatedCellIsFilled
