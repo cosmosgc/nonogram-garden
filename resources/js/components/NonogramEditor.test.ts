@@ -57,6 +57,27 @@ describe('NonogramEditor', () => {
         wrapper.unmount();
     });
 
+    it('paints arrow-key movement while Space is held as one undoable stroke', async () => {
+        const wrapper = mount(NonogramEditor, { attachTo: document.body });
+        const canvas = wrapper.get('canvas');
+        const [undoButton] = wrapper.get('[aria-label="Edit history"]').findAll('button');
+
+        await canvas.trigger('keydown', { key: ' ' });
+        await canvas.trigger('keydown', { key: 'ArrowRight' });
+        await canvas.trigger('keydown', { key: 'ArrowRight' });
+        expect(canvas.attributes('aria-label')).toContain('Row 1, column 3, filled');
+        expect((undoButton.element as HTMLButtonElement).disabled).toBe(true);
+
+        window.dispatchEvent(new KeyboardEvent('keyup', { key: ' ' }));
+        await nextTick();
+        expect((undoButton.element as HTMLButtonElement).disabled).toBe(false);
+        await undoButton.trigger('click');
+        expect(canvas.attributes('aria-label')).toContain('Row 1, column 3, empty');
+        expect(wrapper.get('.row-clues .clue-line').text()).toBe('0');
+
+        wrapper.unmount();
+    });
+
     it('restores an imported image grid into a new unsaved draft', async () => {
         const imported = { version: 1, width: 2, height: 1, cells: '10' };
         sessionStorage.setItem('nonogram:image-import:7', JSON.stringify(imported));
@@ -343,6 +364,26 @@ describe('NonogramEditor', () => {
         expect((document.activeElement as HTMLElement).getAttribute('data-accessible-cell')).toBe('1');
         await wrapper.get('[aria-label="Edit history"]').findAll('button')[0].trigger('click');
         expect(wrapper.get('[data-accessible-cell="0"]').attributes('aria-label')).toBe('Row 1, column 1: empty');
+        wrapper.unmount();
+    });
+
+    it('supports held-Space arrow strokes in the semantic cell grid', async () => {
+        const wrapper = mount(NonogramEditor, { attachTo: document.body });
+        await wrapper.get('.accessible-toggle').trigger('click');
+        const firstCell = wrapper.get('[data-accessible-cell="0"]');
+
+        await firstCell.trigger('keydown', { key: ' ' });
+        await firstCell.trigger('keydown', { key: 'ArrowRight' });
+        window.dispatchEvent(new KeyboardEvent('keyup', { key: ' ' }));
+        await nextTick();
+
+        expect(wrapper.get('[data-accessible-cell="0"]').attributes('aria-label')).toContain('filled');
+        expect(wrapper.get('[data-accessible-cell="1"]').attributes('aria-label')).toContain('filled');
+        const [undoButton] = wrapper.get('[aria-label="Edit history"]').findAll('button');
+        await undoButton.trigger('click');
+        expect(wrapper.get('[data-accessible-cell="0"]').attributes('aria-label')).toContain('empty');
+        expect(wrapper.get('[data-accessible-cell="1"]').attributes('aria-label')).toContain('empty');
+
         wrapper.unmount();
     });
 

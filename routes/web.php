@@ -12,6 +12,7 @@ use App\Http\Controllers\PuzzleBrowseController;
 use App\Http\Controllers\PuzzleDraftController;
 use App\Http\Controllers\PuzzleGameSessionController;
 use App\Http\Controllers\PuzzleProgressController;
+use App\Http\Controllers\PuzzleRevealImageController;
 use App\Http\Controllers\UnpublishPuzzleController;
 use App\Models\Puzzle;
 use App\Services\Nonogram\DiscoverySettings;
@@ -86,10 +87,14 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/puzzles/{puzzle}/revisions/{revision}/progress', [PuzzleProgressController::class, 'show'])
         ->middleware('throttle:application')->name('puzzles.progress.show');
+    Route::get('/puzzles/{puzzle}/revisions/{revision}/reveal-image', PuzzleRevealImageController::class)
+        ->middleware('throttle:application')->name('puzzles.revisions.reveal-image');
     Route::put('/puzzles/{puzzle}/revisions/{revision}/progress', [PuzzleProgressController::class, 'save'])
         ->middleware('throttle:application')->name('puzzles.progress.save');
     Route::post('/puzzles/{puzzle}/revisions/{revision}/complete', CompletePuzzleController::class)
         ->middleware('throttle:application')->name('puzzles.progress.complete');
+    Route::post('/puzzles/{puzzle}/revisions/{revision}/life-check/batch', [PuzzleGameSessionController::class, 'checkFills'])
+        ->middleware('throttle:application')->name('puzzles.game-session.life-check.batch');
     Route::post('/puzzles/{puzzle}/unpublish', UnpublishPuzzleController::class)
         ->middleware('throttle:application')->name('puzzles.unpublish');
 

@@ -91,6 +91,49 @@ class PuzzleGameSessionTest extends TestCase
         $this->postJson($url, ['cell_index' => 1, 'guess_id' => $guessId])->assertOk()->assertJsonPath('lives_remaining', 2);
     }
 
+    public function test_filled_cells_can_be_checked_as_an_idempotent_batch(): void
+    {
+        $owner = User::factory()->create();
+        $puzzle = $this->publish($owner, 2, 2, '1010');
+        $revision = $puzzle->publishedRevision;
+        $url = "/puzzles/{$puzzle->id}/revisions/{$revision->id}/life-check/batch";
+        $guesses = [
+            ['cell_index' => 0, 'guess_id' => (string) Str::uuid()],
+            ['cell_index' => 1, 'guess_id' => (string) Str::uuid()],
+            ['cell_index' => 2, 'guess_id' => (string) Str::uuid()],
+        ];
+
+        $first = $this->postJson($url, ['guesses' => $guesses])
+            ->assertOk()
+            ->assertJsonPath('lives_remaining', 2)
+            ->assertJsonPath('guess_count', 3)
+            ->assertJsonPath('processed_guess_ids', array_column($guesses, 'guess_id'))
+            ->assertJsonPath('correct_guess_ids', [$guesses[0]['guess_id'], $guesses[2]['guess_id']])
+            ->assertJsonMissingPath('solution_data');
+
+        $this->postJson($url, ['guesses' => $guesses])
+            ->assertOk()
+            ->assertJsonPath('lives_remaining', 2)
+            ->assertJsonPath('guess_count', 3)
+            ->assertJsonPath('correct_guess_ids', [$guesses[0]['guess_id'], $guesses[2]['guess_id']]);
+        self::assertSame(2, $first->json('lives_remaining'));
+    }
+
+    public function test_batch_life_check_rejects_invalid_cells_and_batches_over_the_limit(): void
+    {
+        $owner = User::factory()->create();
+        $puzzle = $this->publish($owner, 2, 2, '1111');
+        $revision = $puzzle->publishedRevision;
+        $url = "/puzzles/{$puzzle->id}/revisions/{$revision->id}/life-check/batch";
+
+        $this->postJson($url, ['guesses' => [['cell_index' => 4, 'guess_id' => (string) Str::uuid()]]])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['guesses.0.cell_index']);
+        $this->postJson($url, ['guesses' => array_fill(0, 201, ['cell_index' => 0, 'guess_id' => (string) Str::uuid()])])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['guesses']);
+    }
+
     public function test_game_session_and_life_check_follow_puzzle_visibility_rules(): void
     {
         $owner = User::factory()->create();

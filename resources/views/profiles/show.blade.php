@@ -6,9 +6,9 @@
     <title>{{ $profile->name }} · Nonogram profile</title>
     @vite('resources/css/app.css')
 </head>
-<body class="min-h-screen bg-slate-50 text-slate-900">
+<body class="min-h-screen text-slate-900">
     @include('layouts.feature-navigation')
-    <main class="mx-auto max-w-5xl p-6">
+    <main class="feature-page mx-auto max-w-5xl p-6">
         <header class="border-b pb-6">
             <p class="text-sm text-slate-600">Creator profile</p>
             <div class="mt-2 flex items-center gap-4">
@@ -28,7 +28,7 @@
             @else
                 <ul class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     @foreach ($puzzles as $puzzle)
-                        <li class="rounded-lg border bg-white p-5 shadow-sm">
+                        <li class="feature-card rounded-2xl border bg-white p-5 shadow-sm">
                             <a class="font-semibold underline" href="{{ route('puzzles.show', $puzzle) }}">{{ $puzzle->title }}</a>
                             @if ($puzzle->moderation_status === 'pending')<span class="ml-2 rounded bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-900">Pending review</span>@endif
                             @if ($puzzle->description)<p class="mt-2 line-clamp-3 text-sm text-slate-600">{{ $puzzle->description }}</p>@endif
@@ -48,7 +48,7 @@
             @else
                 <ul class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     @foreach ($collections as $collection)
-                        <li class="rounded-lg border bg-white p-5 shadow-sm">
+                        <li class="feature-card rounded-2xl border bg-white p-5 shadow-sm">
                             <a class="font-semibold underline" href="{{ route('collections.show', $collection) }}">{{ $collection->title }}</a>
                             @if ($collection->description)<p class="mt-2 text-sm text-slate-600">{{ $collection->description }}</p>@endif
                         </li>

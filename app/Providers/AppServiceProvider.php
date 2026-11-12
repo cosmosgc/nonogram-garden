@@ -65,6 +65,7 @@ class AppServiceProvider extends ServiceProvider
             'puzzles.game-session.show' => 60,
             'puzzles.game-session.mode' => 10,
             'puzzles.game-session.life-check' => 120,
+            'puzzles.game-session.life-check.batch' => 30,
             'puzzles.game-session.restart' => 5,
             'puzzles.unpublish' => 5,
             'puzzles.drafts.store' => 10,

@@ -6,10 +6,10 @@
     <title>Browse puzzles · Nonogram</title>
     @vite('resources/css/app.css')
 </head>
-<body class="min-h-screen bg-slate-50 text-slate-900">
+<body class="min-h-screen text-slate-900">
     @include('layouts.feature-navigation')
-    <main class="mx-auto max-w-5xl p-6">
-        <header class="flex flex-wrap items-center justify-between gap-4 border-b pb-5">
+    <main class="feature-page mx-auto max-w-5xl p-6">
+        <header class="feature-heading flex flex-wrap items-center justify-between gap-4 border-b pb-5">
             <div>
                 <h1 class="mt-3 text-3xl font-bold">Browse puzzles</h1>
                 <p class="mt-2 text-slate-600">Play public, uniquely solvable Classic puzzles.</p>
@@ -21,7 +21,7 @@
             @endauth
         </header>
 
-        <form method="get" action="{{ route('puzzles.index') }}" class="mt-6 grid gap-3 rounded-lg border bg-white p-4 sm:grid-cols-2 lg:grid-cols-6">
+        <form method="get" action="{{ route('puzzles.index') }}" class="feature-panel mt-6 grid gap-3 rounded-2xl border bg-white p-5 sm:grid-cols-2 lg:grid-cols-6">
             <label class="grid gap-1 text-sm">Width
                 <input name="width" type="number" min="1" max="30" value="{{ $filters['width'] ?? '' }}" class="rounded border-slate-300">
             </label>
@@ -47,14 +47,14 @@
         </form>
 
         @if ($puzzles->isEmpty())
-            <section class="mt-8 rounded border bg-white p-6">
+            <section class="feature-panel mt-8 rounded-2xl border bg-white p-6">
                 <h2 class="text-lg font-semibold">No approved public puzzles match these filters</h2>
                 <p class="mt-2 text-slate-600">New publications appear in browse only after moderator approval. Try changing the filters, or create and publish a Classic puzzle for review.</p>
             </section>
         @else
             <ul class="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 @foreach ($puzzles as $puzzle)
-                    <li class="overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
+                    <li class="feature-card overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
                         @if ($completedSolutions->has($puzzle->published_revision_id))
                             @php($solutionPreview = $completedSolutions->get($puzzle->published_revision_id))
                             <div class="grid aspect-[5/3] place-items-center bg-[#edf4ed] p-5" aria-label="Completed puzzle image">

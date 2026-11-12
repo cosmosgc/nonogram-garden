@@ -10,9 +10,10 @@
 <body>
     @include('layouts.feature-navigation')
     <div id="nonogram-image-importer"
-         data-user-id="{{ auth()->id() }}"
-         data-editor-new-url="{{ route('editor.new') }}">
-        <main class="mx-auto max-w-5xl space-y-6 p-6">
+         data-editor-new-url="{{ route('editor.new') }}"
+         data-editor-edit-url-template="{{ route('editor.edit', ['puzzle' => '__PUZZLE_ID__']) }}"
+         data-draft-store-url="{{ route('puzzles.drafts.store') }}">
+        <main class="feature-page mx-auto max-w-5xl space-y-6 p-6">
             <h1 class="text-3xl font-bold">{{ __('Import an image') }}</h1>
             <p>{{ __('Loading the image importer… If this message stays visible, reload the page or check that JavaScript is enabled.') }}</p>
         </main>

@@ -48,31 +48,95 @@ class PuzzleGameSessionController extends Controller
                 : ['prohibited'],
         ]);
         $cellIndex = (int) $validated['cell_index'];
-        $guessId = $validated['guess_id'];
+        $guessId = (string) $validated['guess_id'];
         $key = $this->key($revision);
         $state = $request->session()->get($key, $this->initialState($revision, false));
+        $this->processGuess($state, $revision, $cellIndex, $guessId, isset($validated['mark']) ? (int) $validated['mark'] : null);
+        $request->session()->put($key, $state);
 
-        if (in_array($guessId, $state['processed_guesses'], true)) {
-            return response()->json($this->publicState($state));
-        }
-        if ($state['game_over']) {
+        if ($state['game_over'] && ! in_array($guessId, $state['processed_guesses'], true)) {
             return response()->json(['message' => 'No lives remain. Start a new attempt to continue.'] + $this->publicState($state), 409);
         }
 
-        $incorrectFill = $revision->mode === 'color'
-            ? (string) $validated['mark'] !== $revision->solution_data[$cellIndex]
-            : $revision->solution_data[$cellIndex] === '0';
-        if (! $state['hardcore'] && $incorrectFill) {
+        return response()->json($this->publicState($state));
+    }
+
+    public function checkFills(Request $request, Puzzle $puzzle, PuzzleRevision $revision, DiscoverySettings $settings): JsonResponse
+    {
+        $this->ensurePlayable($puzzle, $revision, $settings);
+        $validated = $request->validate([
+            'guesses' => ['required', 'array', 'min:1', 'max:200'],
+            'guesses.*' => ['required', 'array:cell_index,guess_id,mark'],
+            'guesses.*.cell_index' => ['required', 'integer', 'min:0', 'max:'.($revision->width * $revision->height - 1)],
+            'guesses.*.guess_id' => ['required', 'uuid', 'distinct'],
+            'guesses.*.mark' => $revision->mode === 'color'
+                ? ['required', 'integer', 'min:1', 'max:'.count($revision->palette ?? [])]
+                : ['prohibited'],
+        ]);
+        $key = $this->key($revision);
+        $state = $request->session()->get($key, $this->initialState($revision, false));
+        $processedGuessIds = [];
+        $correctGuessIds = [];
+
+        foreach ($validated['guesses'] as $guess) {
+            $guessId = (string) $guess['guess_id'];
+            $result = $this->processGuess(
+                $state,
+                $revision,
+                (int) $guess['cell_index'],
+                $guessId,
+                isset($guess['mark']) ? (int) $guess['mark'] : null,
+            );
+
+            if ($result === null && $state['game_over']) {
+                break;
+            }
+
+            $processedGuessIds[] = $guessId;
+            if ($result === true && ! $state['hardcore']) {
+                $correctGuessIds[] = $guessId;
+            }
+        }
+
+        $request->session()->put($key, $state);
+
+        return response()->json($this->publicState($state) + [
+            'processed_guess_ids' => $processedGuessIds,
+            'correct_guess_ids' => $correctGuessIds,
+        ]);
+    }
+
+    /** @param array<string, mixed> $state */
+    private function processGuess(array &$state, PuzzleRevision $revision, int $cellIndex, string $guessId, ?int $mark): ?bool
+    {
+        $state['guess_results'] ??= [];
+        if (isset($state['guess_results'][$guessId])) {
+            return $state['guess_results'][$guessId];
+        }
+        if (in_array($guessId, $state['processed_guesses'], true)) {
+            return null;
+        }
+        if ($state['game_over']) {
+            return null;
+        }
+
+        $correct = $revision->mode === 'color'
+            ? (string) $mark === $revision->solution_data[$cellIndex]
+            : $revision->solution_data[$cellIndex] === '1';
+        if (! $state['hardcore'] && ! $correct) {
             $state['lives_remaining'] = max(0, $state['lives_remaining'] - 1);
             $state['game_over'] = $state['lives_remaining'] === 0;
         }
         $state['mode_locked'] = true;
         $state['guess_count']++;
         $state['processed_guesses'][] = $guessId;
-        $state['processed_guesses'] = array_slice($state['processed_guesses'], -100);
-        $request->session()->put($key, $state);
+        $state['processed_guesses'] = array_slice($state['processed_guesses'], -500);
+        $state['guess_results'][$guessId] = $correct;
+        if (count($state['guess_results']) > 500) {
+            $state['guess_results'] = array_slice($state['guess_results'], -500, null, true);
+        }
 
-        return response()->json($this->publicState($state));
+        return $correct;
     }
 
     public function restart(Request $request, Puzzle $puzzle, PuzzleRevision $revision, DiscoverySettings $settings): JsonResponse
@@ -90,7 +154,7 @@ class PuzzleGameSessionController extends Controller
         return response()->json($this->publicState($state));
     }
 
-    /** @return array{hardcore:bool,lives_remaining:?int,initial_lives:?int,mode_locked:bool,game_over:bool,guess_count:int,processed_guesses:list<string>} */
+    /** @return array{hardcore:bool,lives_remaining:?int,initial_lives:?int,mode_locked:bool,game_over:bool,guess_count:int,processed_guesses:list<string>,guess_results:array<string,bool>} */
     private function initialState(PuzzleRevision $revision, bool $hardcore): array
     {
         $lives = $hardcore ? null : $this->livesForSize($revision->width * $revision->height);
@@ -103,6 +167,7 @@ class PuzzleGameSessionController extends Controller
             'game_over' => false,
             'guess_count' => 0,
             'processed_guesses' => [],
+            'guess_results' => [],
         ];
     }
 

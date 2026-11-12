@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Puzzle;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -29,14 +30,17 @@ class ProfileTest extends TestCase
 
         $response = $this
             ->actingAs($user)
+            ->followingRedirects()
             ->patch('/profile', [
                 'name' => 'Test User',
                 'email' => 'test@example.com',
             ]);
 
         $response
-            ->assertSessionHasNoErrors()
-            ->assertRedirect('/profile');
+            ->assertOk()
+            ->assertSee('role="status"', false)
+            ->assertSee('aria-live="polite"', false)
+            ->assertSee('Saved.');
 
         $user->refresh();
 
@@ -139,15 +143,20 @@ class ProfileTest extends TestCase
     public function test_account_deletion_removes_the_users_avatar(): void
     {
         Storage::fake('public');
+        Storage::fake('local');
         $user = User::factory()->create();
         $avatarPath = "avatars/{$user->id}/123e4567-e89b-12d3-a456-426614174000.png";
         Storage::disk('public')->put($avatarPath, 'clean image bytes');
         $user->avatar_path = $avatarPath;
         $user->save();
+        $puzzle = Puzzle::factory()->for($user, 'owner')->create();
+        Storage::disk('local')->put("puzzle-images/{$puzzle->id}/original.png", 'source bytes');
+        Storage::disk('local')->put("puzzle-images/{$puzzle->id}/reveal.png", 'reveal bytes');
 
         $this->actingAs($user)->delete('/profile', ['password' => 'password'])->assertRedirect('/');
 
         Storage::disk('public')->assertMissing($avatarPath);
+        Storage::disk('local')->assertDirectoryEmpty("puzzle-images/{$puzzle->id}");
         $this->assertNull($user->fresh());
     }
 

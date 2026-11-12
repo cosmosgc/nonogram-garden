@@ -24,6 +24,8 @@ class UnpublishPuzzleController extends Controller
                 'width' => $revision->width,
                 'height' => $revision->height,
                 'draft_cells' => $revision->solution_data,
+                'draft_original_image_path' => $revision->original_image_path,
+                'draft_reveal_image_path' => $revision->reveal_image_path,
                 'draft_version' => $locked->draft_version + 1,
                 'published_at' => null,
             ])->save();

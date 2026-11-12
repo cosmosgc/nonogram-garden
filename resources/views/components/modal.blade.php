@@ -17,6 +17,18 @@ $maxWidth = [
 <div
     x-data="{
         show: @js($show),
+        opener: null,
+        rememberOpener(trigger) {
+            this.opener = trigger instanceof HTMLElement ? trigger : document.activeElement;
+            this.show = true;
+        },
+        restoreOpener() {
+            const opener = this.opener;
+            setTimeout(() => {
+                if (!this.show && this.opener === opener && opener instanceof HTMLElement && opener.isConnected) opener.focus();
+                if (this.opener === opener) this.opener = null;
+            }, 250);
+        },
         focusables() {
             // All focusable element types...
             let selector = 'a, button, input:not([type=\'hidden\']), textarea, select, details, [tabindex]:not([tabindex=\'-1\'])'
@@ -37,9 +49,10 @@ $maxWidth = [
             {{ $attributes->has('focusable') ? 'setTimeout(() => firstFocusable().focus(), 100)' : '' }}
         } else {
             document.body.classList.remove('overflow-y-hidden');
+            restoreOpener();
         }
     })"
-    x-on:open-modal.window="$event.detail == '{{ $name }}' ? show = true : null"
+    x-on:open-modal.window="$event.detail == '{{ $name }}' ? rememberOpener($event.target) : null"
     x-on:close-modal.window="$event.detail == '{{ $name }}' ? show = false : null"
     x-on:close.stop="show = false"
     x-on:keydown.escape.window="show = false"
@@ -65,6 +78,9 @@ $maxWidth = [
 
     <div
         x-show="show"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="{{ $name }}-title"
         class="mb-6 bg-white rounded-lg overflow-hidden shadow-xl transform transition-all sm:w-full {{ $maxWidth }} sm:mx-auto"
         x-transition:enter="ease-out duration-300"
         x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"

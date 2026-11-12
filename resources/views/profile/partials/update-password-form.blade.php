@@ -40,6 +40,8 @@
                     x-show="show"
                     x-transition
                     x-init="setTimeout(() => show = false, 2000)"
+                    role="status"
+                    aria-live="polite"
                     class="text-sm text-gray-600"
                 >{{ __('Saved.') }}</p>
             @endif

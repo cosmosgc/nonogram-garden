@@ -1,16 +1,16 @@
 <!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Manage {{ $collection->title }} · Nonogram</title>@vite('resources/css/app.css')</head>
-<body class="min-h-screen bg-slate-50 text-slate-900">
+<body class="min-h-screen text-slate-900">
     @include('layouts.feature-navigation')
-    <main class="mx-auto max-w-4xl space-y-8 p-6">
+    <main class="feature-page mx-auto max-w-4xl space-y-8 p-6">
         <header>
             <a href="{{ route('collections.index') }}" class="underline">← Collections</a>
             <h1 class="mt-4 text-3xl font-bold">Manage {{ $collection->title }}</h1>
             <p class="mt-2 text-slate-600">Collection slugs are global and remain stable if you rename the collection.</p>
         </header>
         @if (session('status'))<p role="status">{{ session('status') }}</p>@endif
-        <form method="post" action="{{ route('collections.update', $collection) }}" class="grid gap-5 rounded-lg border bg-white p-6">
+        <form method="post" action="{{ route('collections.update', $collection) }}" class="feature-panel grid gap-5 rounded-2xl border bg-white p-6">
             @csrf @method('put')
             <label class="grid gap-1">Title<input name="title" maxlength="120" required value="{{ old('title', $collection->title) }}" class="rounded border-slate-300">@error('title')<span class="text-sm text-red-700">{{ $message }}</span>@enderror</label>
             <label class="grid gap-1">Description<textarea name="description" maxlength="1000" rows="4" class="rounded border-slate-300">{{ old('description', $collection->description) }}</textarea>@error('description')<span class="text-sm text-red-700">{{ $message }}</span>@enderror</label>
@@ -23,7 +23,7 @@
             <button class="w-fit rounded bg-emerald-900 px-4 py-2 text-white">Save details</button>
         </form>
 
-        <form method="post" action="{{ route('collections.puzzles.sync', $collection) }}" class="rounded-lg border bg-white p-6">
+        <form method="post" action="{{ route('collections.puzzles.sync', $collection) }}" class="feature-panel rounded-2xl border bg-white p-6">
             @csrf @method('put')
             <h2 class="text-xl font-semibold">Order public puzzles</h2>
             <p class="mt-1 text-sm text-slate-600">Set a unique position from 1–100. Use 0 to remove a puzzle. Items are renumbered without gaps.</p>

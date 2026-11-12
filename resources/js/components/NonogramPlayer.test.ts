@@ -3,14 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import NonogramPlayer from './NonogramPlayer.vue';
 
-function mountPlayer(width = 2, height = 2, rows = [[1], [1]], columns = [[1], [1]], userId?: number, basePath = '', hint: { row_index: number; column_index: number; row_cells: string; column_cells: string } | null = null, lifeApi = false) {
-    const gameAttrs = lifeApi ? `data-game-session-url="${basePath}/game-session" data-game-mode-url="${basePath}/game-mode" data-life-check-url="${basePath}/life-check" data-game-restart-url="${basePath}/restart"` : '';
-    document.body.innerHTML = `<div id="nonogram-player" data-width="${width}" data-height="${height}" data-puzzle-id="12" data-revision-id="34" data-progress-url="${basePath}/puzzles/12/revisions/34/progress" data-completion-url="${basePath}/puzzles/12/revisions/34/complete" ${gameAttrs} data-start-hint='${JSON.stringify(hint)}' ${userId ? `data-user-id="${userId}"` : ''} data-row-clues='${JSON.stringify(rows)}' data-column-clues='${JSON.stringify(columns)}'></div>`;
+function mountPlayer(width = 2, height = 2, rows = [[1], [1]], columns = [[1], [1]], userId?: number, basePath = '', hint: { row_index: number; column_index: number; row_cells: string; column_cells: string } | null = null, lifeApi = false, revealImageUrl?: string) {
+    const gameAttrs = lifeApi ? `data-game-session-url="${basePath}/game-session" data-game-mode-url="${basePath}/game-mode" data-life-check-url="${basePath}/life-check" data-life-check-batch-url="${basePath}/life-check/batch" data-game-restart-url="${basePath}/restart"` : '';
+    document.body.innerHTML = `<div id="nonogram-player" data-width="${width}" data-height="${height}" data-puzzle-id="12" data-revision-id="34" data-progress-url="${basePath}/puzzles/12/revisions/34/progress" data-completion-url="${basePath}/puzzles/12/revisions/34/complete" ${gameAttrs} ${revealImageUrl ? `data-reveal-image-url="${revealImageUrl}"` : ''} data-start-hint='${JSON.stringify(hint)}' ${userId ? `data-user-id="${userId}"` : ''} data-row-clues='${JSON.stringify(rows)}' data-column-clues='${JSON.stringify(columns)}'></div>`;
     return mount(NonogramPlayer, { attachTo: document.getElementById('nonogram-player')! });
 }
 
-function mountColorPlayer(userId?: number) {
-    document.body.innerHTML = `<div id="nonogram-player" data-width="2" data-height="1" data-puzzle-id="12" data-revision-id="34" data-mode="color" data-palette='[{"name":"Crimson","hex":"#C0392B"},{"name":"Ocean","hex":"#2471A3"}]' data-progress-url="/puzzles/12/revisions/34/progress" ${userId ? `data-user-id="${userId}"` : ''} data-row-clues='[[[1,1],[1,2]]]' data-column-clues='[[[1,1]],[[1,2]]]' data-start-hint="null"></div>`;
+function mountColorPlayer(userId?: number, lifeCheckBatchUrl?: string) {
+    document.body.innerHTML = `<div id="nonogram-player" data-width="2" data-height="1" data-puzzle-id="12" data-revision-id="34" data-mode="color" data-palette='[{"name":"Crimson","hex":"#C0392B"},{"name":"Ocean","hex":"#2471A3"}]' data-progress-url="/puzzles/12/revisions/34/progress" ${lifeCheckBatchUrl ? `data-life-check-batch-url="${lifeCheckBatchUrl}"` : ''} ${userId ? `data-user-id="${userId}"` : ''} data-row-clues='[[[1,1],[1,2]]]' data-column-clues='[[[1,1]],[[1,2]]]' data-start-hint="null"></div>`;
     return mount(NonogramPlayer, { attachTo: document.getElementById('nonogram-player')! });
 }
 
@@ -110,9 +110,14 @@ describe('NonogramPlayer', () => {
             .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({
                 hardcore: false, lives_remaining: 3, initial_lives: 3, mode_locked: false, game_over: false, guess_count: 0,
             }) } as Response)
-            .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({
-                hardcore: false, lives_remaining: 2, initial_lives: 3, mode_locked: true, game_over: false, guess_count: 1,
-            }) } as Response);
+            .mockImplementationOnce(async (_url, options) => {
+                const guesses = JSON.parse(String(options?.body)).guesses as Array<{ guess_id: string }>;
+
+                return { ok: true, status: 200, json: async () => ({
+                    hardcore: false, lives_remaining: 2, initial_lives: 3, mode_locked: true, game_over: false, guess_count: 1,
+                    processed_guess_ids: guesses.map(guess => guess.guess_id), correct_guess_ids: [],
+                }) } as Response;
+            });
         vi.stubGlobal('fetch', fetchMock);
         const wrapper = mountPlayer(2, 2, [[1], [1]], [[1], [1]], undefined, '', null, true);
         await flushPromises();
@@ -120,8 +125,14 @@ describe('NonogramPlayer', () => {
 
         await wrapper.get('[data-player-cell="0"]').trigger('click');
         await flushPromises();
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(wrapper.get('[data-player-cell="0"]').attributes('aria-label')).toBe('Row 1, column 1: filled');
+        await vi.advanceTimersByTimeAsync(3000);
+        await flushPromises();
         expect(fetchMock).toHaveBeenCalledTimes(2);
-        expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toMatchObject({ cell_index: 0, guess_id: expect.stringMatching(/^[0-9a-f-]{36}$/) });
+        expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body)).guesses).toEqual([
+            { cell_index: 0, guess_id: expect.stringMatching(/^[0-9a-f-]{36}$/) },
+        ]);
         expect(wrapper.text()).toContain('Lives: 2 / 3');
         expect((wrapper.get('[data-player-cell="0"]').element as HTMLButtonElement).disabled).toBe(false);
         wrapper.unmount();
@@ -133,9 +144,9 @@ describe('NonogramPlayer', () => {
         });
         const fetchMock = vi.fn()
             .mockResolvedValueOnce({ ok: true, status: 200, json: async () => state(3, false, 0) } as Response)
-            .mockResolvedValueOnce({ ok: true, status: 200, json: async () => state(2, false, 1) } as Response)
-            .mockResolvedValueOnce({ ok: true, status: 200, json: async () => state(1, false, 2) } as Response)
-            .mockResolvedValueOnce({ ok: true, status: 200, json: async () => state(0, true, 3) } as Response)
+            .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({
+                ...state(0, true, 3), processed_guess_ids: [], correct_guess_ids: [],
+            }) } as Response)
             .mockResolvedValueOnce({ ok: true, status: 200, json: async () => state(3, false, 0) } as Response);
         vi.stubGlobal('fetch', fetchMock);
         const base = '/puzzles/12/revisions/34';
@@ -143,8 +154,9 @@ describe('NonogramPlayer', () => {
         await flushPromises();
         for (const index of [0, 1, 2]) {
             await wrapper.get(`[data-player-cell="${index}"]`).trigger('click');
-            await flushPromises();
         }
+        await vi.advanceTimersByTimeAsync(3000);
+        await flushPromises();
         expect(wrapper.text()).toContain('No lives remain');
         expect((wrapper.get('[data-player-cell="3"]').element as HTMLButtonElement).disabled).toBe(true);
 
@@ -152,7 +164,7 @@ describe('NonogramPlayer', () => {
         await flushPromises();
         expect(wrapper.text()).toContain('Lives: 3 / 3');
         expect((wrapper.get('[data-player-cell="0"]').element as HTMLButtonElement).disabled).toBe(false);
-        expect(fetchMock.mock.calls[4][1]?.method).toBe('POST');
+        expect(fetchMock.mock.calls[2][1]?.method).toBe('POST');
         wrapper.unmount();
     });
 
@@ -166,6 +178,7 @@ describe('NonogramPlayer', () => {
             }) } as Response)
             .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({
                 hardcore: true, lives_remaining: null, initial_lives: null, mode_locked: true, game_over: false, guess_count: 1,
+                processed_guess_ids: [], correct_guess_ids: [],
             }) } as Response);
         vi.stubGlobal('fetch', fetchMock);
         const wrapper = mountPlayer(2, 2, [[1], [1]], [[1], [1]], undefined, '', null, true);
@@ -177,6 +190,7 @@ describe('NonogramPlayer', () => {
         expect((wrapper.get('.player-auto-cross input').element as HTMLInputElement).disabled).toBe(true);
 
         await wrapper.get('[data-player-cell="0"]').trigger('click');
+        await vi.advanceTimersByTimeAsync(3000);
         await flushPromises();
         expect(wrapper.get('[data-player-cell="1"]').attributes('aria-label')).toBe('Row 1, column 2: unknown');
         expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -295,7 +309,9 @@ describe('NonogramPlayer', () => {
         expect(wrapper.get('[data-player-cell="0"]').attributes('aria-label')).toBe('Row 1, column 1: crossed out');
         await wrapper.findAll('button').find(button => button.text() === 'Erase')!.trigger('click');
         await wrapper.get('[data-player-cell="0"]').trigger('click');
-        await vi.advanceTimersByTimeAsync(900);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(wrapper.text()).toContain('account sync is pending');
+        await vi.advanceTimersByTimeAsync(10_000);
         await flushPromises();
 
         expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -319,7 +335,7 @@ describe('NonogramPlayer', () => {
         const wrapper = mountPlayer(2, 2, [[1], [1]], [[1], [1]], 77);
         await flushPromises();
         await wrapper.get('[data-player-cell="0"]').trigger('click');
-        await vi.advanceTimersByTimeAsync(900);
+        await vi.advanceTimersByTimeAsync(10_000);
         await flushPromises();
 
         expect(wrapper.text()).toContain('local copy is preserved');
@@ -349,7 +365,7 @@ describe('NonogramPlayer', () => {
         const first = mountPlayer(2, 2, [[1], [1]], [[1], [1]], 77);
         await flushPromises();
         await first.get('[data-player-cell="0"]').trigger('click');
-        await vi.advanceTimersByTimeAsync(900);
+        await vi.advanceTimersByTimeAsync(10_000);
         await flushPromises();
         first.unmount();
 
@@ -357,7 +373,7 @@ describe('NonogramPlayer', () => {
         await flushPromises();
         expect(resumed.text()).toContain('local progress copy is available');
         await resumed.get('.conflict-actions button').trigger('click');
-        await vi.advanceTimersByTimeAsync(900);
+        await vi.advanceTimersByTimeAsync(10_000);
         await flushPromises();
 
         expect(fetchMock).toHaveBeenCalledTimes(4);
@@ -381,7 +397,7 @@ describe('NonogramPlayer', () => {
         const wrapper = mountPlayer(1, 1, [[1]], [[1]], 77);
         await flushPromises();
         await wrapper.get('[data-player-cell="0"]').trigger('click');
-        await vi.advanceTimersByTimeAsync(900);
+        await vi.advanceTimersByTimeAsync(10_000);
         await flushPromises();
 
         expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -391,6 +407,47 @@ describe('NonogramPlayer', () => {
         expect(wrapper.find('.candidate-status button').exists()).toBe(false);
         expect(wrapper.findAll('button').some(button => button.text() === 'Play again')).toBe(true);
         expect((wrapper.get('[data-player-cell="0"]').element as HTMLButtonElement).disabled).toBe(true);
+        wrapper.unmount();
+    });
+
+    it('shows the blended artwork overlay after verified completion and lets the player toggle the board', async () => {
+        const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({
+            revision_id: 34,
+            progress: { marks: '1', elapsed_seconds: 3, mistake_count: 0, version: 2, completed_at: '2026-11-11T12:00:00Z' },
+        }) } as Response);
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mountPlayer(1, 1, [[1]], [[1]], 77, '', null, false, '/puzzles/12/revisions/34/reveal-image');
+        await flushPromises();
+
+        expect(wrapper.get('.player-artwork-overlay img').attributes('alt')).toBe('Picture used to create this puzzle');
+        const boardCanvas = wrapper.get('.player-grid-canvas').element as HTMLElement;
+        expect(boardCanvas.style.getPropertyValue('--player-board-width')).toBe('36px');
+        expect(boardCanvas.style.getPropertyValue('--player-board-height')).toBe('36px');
+        await wrapper.get('[aria-label="Zoom in"]').trigger('click');
+        expect(boardCanvas.style.getPropertyValue('--player-cell-size')).toBe('40px');
+        expect(boardCanvas.style.getPropertyValue('--player-board-width')).toBe('40px');
+        expect(boardCanvas.style.getPropertyValue('--player-board-height')).toBe('40px');
+        const toggle = wrapper.get('.player-reveal-control button');
+        expect(toggle.text()).toBe('Show puzzle');
+        await toggle.trigger('click');
+        expect(wrapper.find('.player-artwork-overlay').exists()).toBe(false);
+        expect(toggle.text()).toBe('Show picture overlay');
+        await toggle.trigger('click');
+        expect(wrapper.find('.player-artwork-overlay img').exists()).toBe(true);
+        wrapper.unmount();
+    });
+
+    it('does not show artwork controls before server-verified completion', async () => {
+        const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({
+            revision_id: 34,
+            progress: { marks: '0', elapsed_seconds: 3, mistake_count: 0, version: 1, completed_at: null },
+        }) } as Response);
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mountPlayer(1, 1, [[1]], [[1]], 77, '', null, false, '/puzzles/12/revisions/34/reveal-image');
+        await flushPromises();
+
+        expect(wrapper.find('.player-reveal-control').exists()).toBe(false);
+        expect(wrapper.find('.player-artwork-overlay').exists()).toBe(false);
         wrapper.unmount();
     });
 
@@ -438,13 +495,50 @@ describe('NonogramPlayer', () => {
         await wrapper.get('[data-player-cell="0"]').trigger('click');
         await wrapper.get('[aria-label="Fill with Ocean, colour 2"]').trigger('click');
         await wrapper.get('[data-player-cell="1"]').trigger('click');
-        await vi.advanceTimersByTimeAsync(900);
+        await vi.advanceTimersByTimeAsync(10_000);
         await flushPromises();
 
         expect(fetchMock).toHaveBeenCalledTimes(2);
         expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toMatchObject({ marks: '12', version: 0 });
         expect(wrapper.text()).toContain('Solved — verified by the server');
         expect((wrapper.get('[data-player-cell="1"]').element as HTMLButtonElement).disabled).toBe(true);
+        wrapper.unmount();
+    });
+
+    it('auto-crosses the empty remainder of a server-confirmed color line and auto-finishes through server verification', async () => {
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({
+                revision_id: 34,
+                progress: { marks: '000', elapsed_seconds: 0, mistake_count: 0, version: 0, completed_at: null },
+            }) } as Response)
+            .mockImplementationOnce(async (_url, options) => {
+                const guesses = JSON.parse(String(options?.body)).guesses as Array<{ guess_id: string }>;
+
+                return { ok: true, status: 200, json: async () => ({
+                    processed_guess_ids: guesses.map(guess => guess.guess_id),
+                    correct_guess_ids: guesses.map(guess => guess.guess_id),
+                }) } as Response;
+            })
+            .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({
+                progress: { marks: '129', elapsed_seconds: 1, mistake_count: 0, version: 1, completed_at: '2026-11-11T00:00:00Z' },
+            }) } as Response);
+        vi.stubGlobal('fetch', fetchMock);
+        document.body.innerHTML = `<div id="nonogram-player" data-width="3" data-height="1" data-puzzle-id="12" data-revision-id="34" data-mode="color" data-palette='[{"name":"Crimson","hex":"#C0392B"},{"name":"Ocean","hex":"#2471A3"}]' data-progress-url="/puzzles/12/revisions/34/progress" data-life-check-batch-url="/puzzles/12/revisions/34/life-check/batch" data-user-id="77" data-row-clues='[[[1,1],[1,2]]]' data-column-clues='[[[1,1]],[[1,2]],[]]' data-start-hint="null"></div>`;
+        const wrapper = mount(NonogramPlayer, { attachTo: document.getElementById('nonogram-player')! });
+        await flushPromises();
+
+        expect(wrapper.find('.player-auto-cross input').exists()).toBe(true);
+        await wrapper.get('[aria-label="Fill with Crimson, colour 1"]').trigger('click');
+        await wrapper.get('[data-player-cell="0"]').trigger('click');
+        await wrapper.get('[aria-label="Fill with Ocean, colour 2"]').trigger('click');
+        await wrapper.get('[data-player-cell="1"]').trigger('click');
+        await vi.advanceTimersByTimeAsync(3000);
+        await flushPromises();
+
+        expect(wrapper.get('[data-player-cell="2"]').attributes('aria-label')).toBe('Row 1, column 3: crossed out');
+        expect(fetchMock).toHaveBeenCalledTimes(3);
+        expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toMatchObject({ marks: '129', version: 0 });
+        expect(wrapper.text()).toContain('Solved — verified by the server');
         wrapper.unmount();
     });
 

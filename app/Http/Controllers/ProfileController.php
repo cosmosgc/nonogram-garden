@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\ProfileUpdateRequest;
+use App\Services\Nonogram\PuzzleImageStorage;
 use App\Services\Profile\AvatarImageProcessor;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -80,13 +81,14 @@ class ProfileController extends Controller
     /**
      * Delete the user's account.
      */
-    public function destroy(Request $request): RedirectResponse
+    public function destroy(Request $request, PuzzleImageStorage $puzzleImageStorage): RedirectResponse
     {
         $request->validateWithBag('userDeletion', [
             'password' => ['required', 'current_password'],
         ]);
 
         $user = $request->user();
+        $puzzleIds = $user->puzzles()->pluck('id');
 
         Auth::logout();
 
@@ -96,6 +98,10 @@ class ProfileController extends Controller
 
         if ($user->avatar_path !== null) {
             $this->deleteStoredAvatar($user->avatar_path, $user->id);
+        }
+
+        foreach ($puzzleIds as $puzzleId) {
+            $puzzleImageStorage->deleteForPuzzle((int) $puzzleId);
         }
 
         $request->session()->invalidate();

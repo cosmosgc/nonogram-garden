@@ -22,11 +22,11 @@ class PublicProfileTest extends TestCase
             ->assertOk()
             ->assertSee('href="'.route('profile.edit').'"', false)
             ->assertSee('Edit profile')
-            ->assertSee('<details class="site-menu">', false);
+            ->assertSee('<details class="site-menu" open>', false);
 
         $content = $response->getContent();
         $profileLinkPosition = strpos($content, 'href="'.route('profile.edit').'"');
-        $menuPosition = strpos($content, '<details class="site-menu">');
+        $menuPosition = strpos($content, '<details class="site-menu" open>');
         $this->assertIsInt($profileLinkPosition);
         $this->assertIsInt($menuPosition);
         $this->assertLessThan($menuPosition, $profileLinkPosition);

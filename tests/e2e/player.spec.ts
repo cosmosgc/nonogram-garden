@@ -21,10 +21,15 @@ async function installGameApi(page: Page, initial: GameState = state(), onFill?:
         current = state(body.hardcore);
         await route.fulfill({ json: current });
     });
-    await page.route('**/mock/life-check', async route => {
-        const body = route.request().postDataJSON() as { cell_index: number; guess_id: string };
-        current = onFill ? onFill(body.cell_index, current) : state(current.hardcore, current.lives_remaining, true, current.guess_count + 1);
-        await route.fulfill({ json: current });
+    await page.route('**/mock/life-check/batch', async route => {
+        const body = route.request().postDataJSON() as { guesses: Array<{ cell_index: number; guess_id: string }> };
+        const correctGuessIds: string[] = [];
+        for (const guess of body.guesses) {
+            current = onFill ? onFill(guess.cell_index, current) : state(current.hardcore, current.lives_remaining, true, current.guess_count + 1);
+            if (current.lives_remaining === 3) correctGuessIds.push(guess.guess_id);
+            if (current.game_over) break;
+        }
+        await route.fulfill({ json: { ...current, processed_guess_ids: body.guesses.map(guess => guess.guess_id), correct_guess_ids: correctGuessIds } });
     });
     await page.route('**/mock/restart', route => route.fulfill({ json: state(current.hardcore) }));
 }
@@ -43,6 +48,36 @@ test('renders square cells and safely auto-crosses a clue-complete row', async (
     await expect(page.locator('[data-player-cell="1"]')).toHaveAttribute('aria-label', 'Row 1, column 2: crossed out');
     await expect(page.locator('[data-player-cell="3"]')).toHaveAttribute('aria-label', 'Row 1, column 4: crossed out');
     await expect(page.locator('[data-player-cell="4"]')).toHaveAttribute('aria-label', 'Row 1, column 5: crossed out');
+});
+
+test('Color Picross auto-crosses confirmed empty cells and verifies completion automatically', async ({ page }) => {
+    await installGameApi(page);
+    let savedMarks = '';
+    await page.route('**/mock/progress', async route => {
+        if (route.request().method() === 'PUT') {
+            savedMarks = (route.request().postDataJSON() as { marks: string }).marks;
+            await route.fulfill({ json: {
+                progress: { marks: savedMarks, elapsed_seconds: 1, mistake_count: 0, version: 1, completed_at: '2026-11-11T00:00:00Z' },
+            } });
+            return;
+        }
+        await route.fulfill({ json: {
+            revision_id: 34,
+            progress: { marks: '000', elapsed_seconds: 0, mistake_count: 0, version: 0, completed_at: null },
+        } });
+    });
+    await page.goto('/tests/browser/player-color.html');
+
+    await expect(page.locator('.player-auto-cross input')).toBeVisible();
+    await expect(page.locator('.player-auto-cross input')).toBeChecked();
+    await page.getByRole('button', { name: 'Fill with Crimson, colour 1' }).click();
+    await page.locator('[data-player-cell="0"]').click();
+    await page.getByRole('button', { name: 'Fill with Ocean, colour 2' }).click();
+    await page.locator('[data-player-cell="1"]').click();
+
+    await expect(page.locator('[data-player-cell="2"]')).toHaveAttribute('aria-label', 'Row 1, column 3: crossed out');
+    await expect(page.locator('.progress-status')).toContainText('Solved — verified by the server');
+    expect(savedMarks).toBe('129');
 });
 
 test('keyboard navigation moves focus between cells and Space marks the focused cell', async ({ page }) => {
@@ -180,6 +215,22 @@ test('shows server-updated lives after an incorrect fill', async ({ page }) => {
 
     await page.locator('[data-player-cell="1"]').click();
     await expect(page.locator('.player-lives')).toHaveText('Lives: 2 / 3');
+});
+
+test('keeps cell marking local and batches filled-cell checks', async ({ page }) => {
+    await installGameApi(page);
+    await page.goto('/tests/browser/player.html');
+    let batchRequests = 0;
+    page.on('request', request => {
+        if (request.url().endsWith('/mock/life-check/batch')) batchRequests++;
+    });
+
+    for (const index of [0, 1, 2]) {
+        await page.locator(`[data-player-cell="${index}"]`).click();
+    }
+    expect(batchRequests).toBe(0);
+    await expect.poll(() => batchRequests).toBe(1);
+    await expect(page.locator('[data-player-cell="2"]')).toHaveAttribute('aria-label', 'Row 1, column 3: filled');
 });
 
 test('Hardcore disables auto-cross and life deductions', async ({ page }) => {

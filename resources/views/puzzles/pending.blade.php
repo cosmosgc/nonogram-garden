@@ -1,10 +1,10 @@
 <!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{ $puzzle->title }} · Awaiting review</title>@vite('resources/css/app.css')</head>
-<body class="min-h-screen bg-slate-50 text-slate-900">
+<body class="min-h-screen text-slate-900">
     @include('layouts.feature-navigation')
-    <main class="mx-auto max-w-3xl p-6">
-        <section class="rounded-lg border bg-white p-6">
+    <main class="feature-page mx-auto max-w-3xl p-6">
+        <section class="feature-panel rounded-2xl border bg-white p-6">
             <p class="text-sm font-semibold uppercase text-amber-800">{{ ucfirst($puzzle->moderation_status) }} moderation</p>
             <h1 class="mt-2 text-3xl font-bold">{{ $puzzle->title }}</h1>
             <p class="mt-4 text-slate-700">

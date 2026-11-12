@@ -1,16 +1,16 @@
 <!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Puzzle moderation · Nonogram</title>@vite('resources/css/app.css')</head>
-<body class="min-h-screen bg-slate-50 text-slate-900">
+<body class="min-h-screen text-slate-900">
     @include('layouts.feature-navigation')
-    <main class="mx-auto max-w-5xl space-y-6 p-6">
+    <main class="feature-page mx-auto max-w-5xl space-y-6 p-6">
         <header>
             <h1 class="text-3xl font-bold">Puzzle moderation</h1>
             <p class="mt-2 text-slate-600">Review uniquely solved published puzzles before public discovery.</p>
         </header>
         @if (session('status'))<p role="status">{{ session('status') }}</p>@endif
         @if ($isAdmin)
-            <section class="rounded-lg border bg-white p-5">
+            <section class="feature-panel rounded-2xl border bg-white p-5">
                 <h2 class="text-lg font-semibold">Site-wide discovery</h2>
                 <p class="mt-2 text-sm text-slate-600">When enabled, pending public puzzles appear for everyone in browse, profiles, public collections, and play before moderator approval. Private, unlisted, draft, rejected, and removed puzzles remain hidden.</p>
                 <form method="post" action="{{ route('moderation.settings.update') }}" class="mt-4 flex flex-wrap items-center gap-4">
@@ -27,7 +27,7 @@
         @else
             <ul class="space-y-5">
                 @foreach ($puzzles as $puzzle)
-                    <li class="rounded-lg border bg-white p-6 shadow-sm">
+                    <li class="feature-card rounded-2xl border bg-white p-6 shadow-sm">
                         <header class="flex flex-wrap items-start justify-between gap-3">
                             <div>
                                 <h2 class="text-xl font-semibold">{{ $puzzle->title }}</h2>

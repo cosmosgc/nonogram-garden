@@ -114,28 +114,24 @@ test('the image importer fits a mobile viewport and transfers into a saved draft
     expect(generatedCellClass).not.toBeNull();
     const generatedCellIsFilled = generatedCellClass!.includes('bg-slate-900');
 
-    await page.getByRole('button', { name: 'Edit puzzle' }).click();
+    const draftResponsePromise = page.waitForResponse(response => response.url().endsWith('/puzzles/drafts')
+        && response.request().method() === 'POST');
+    await page.getByRole('button', { name: 'Create draft and edit' }).click();
+    const draftResponse = await draftResponsePromise;
+    expect(draftResponse.status()).toBe(201);
+    expect(importerPostRequests).toHaveLength(1);
     await expect(page.locator('.editor-page')).toBeVisible();
-    await expect(page.getByLabel('Title')).toHaveValue('Imported image puzzle');
-    await expect(page.locator('.save-area [role="status"]')).toContainText('Image grid imported. Save to create a draft.');
-    expect(importerPostRequests).toEqual([]);
+    await expect(page.getByLabel('Title')).toHaveValue('single-pixel');
     await page.locator('.accessible-toggle').click();
     const importedCell = page.locator('[data-accessible-cell="0"]');
     await expect(importedCell).toHaveAttribute('aria-label', generatedCellIsFilled
         ? 'Row 1, column 1: filled'
         : 'Row 1, column 1: empty');
 
-    const draftResponsePromise = page.waitForResponse(response => response.url().endsWith('/puzzles/drafts')
-        && response.request().method() === 'POST');
-    await page.getByRole('button', { name: 'Save draft' }).click();
-    const draftResponse = await draftResponsePromise;
-    expect(draftResponse.status()).toBe(201);
-    const createdDraft = await draftResponse.json() as { id: number };
-    expect(createdDraft.id).toBeGreaterThan(0);
-    await expect(page.locator('.save-area [role="status"]')).toContainText('Saved');
+    expect(page.url()).toMatch(/\/editor\/\d+$/);
 
     await page.reload();
-    await expect(page.getByLabel('Title')).toHaveValue('Imported image puzzle');
+    await expect(page.getByLabel('Title')).toHaveValue('single-pixel');
     await page.locator('.accessible-toggle').click();
     await expect(page.locator('[data-accessible-cell="0"]')).toHaveAttribute('aria-label', generatedCellIsFilled
         ? 'Row 1, column 1: filled'
@@ -190,3 +186,85 @@ test('JPEG and WebP files decode locally and generate image-import previews', as
         await expect(page.getByRole('alert')).toHaveCount(0);
     }
 });
+
+for (const standard of [false, true]) {
+    test(`a color image imports, publishes, and reveals after completion as ${standard ? 'standard' : 'Color Picross'}`, async ({ page }) => {
+        await page.goto('/login');
+        await page.getByLabel('Email').fill('test@example.com');
+        await page.getByLabel('Password').fill('password');
+        await page.getByRole('button', { name: 'Log in' }).click();
+        await expect(page).toHaveURL(/\/dashboard$/);
+        await page.goto('/editor/import');
+        await page.setViewportSize({ width: 390, height: 844 });
+        const imageBytes = await page.evaluate(async () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 3;
+            canvas.height = 1;
+            const context = canvas.getContext('2d')!;
+            context.fillStyle = '#FF0000';
+            context.fillRect(0, 0, 1, 1);
+            context.fillStyle = '#0000FF';
+            context.fillRect(1, 0, 1, 1);
+            const blob = await new Promise<Blob>(resolve => canvas.toBlob(blob => resolve(blob!), 'image/png'));
+            return Array.from(new Uint8Array(await blob.arrayBuffer()));
+        });
+        await page.getByLabel('Puzzle mode').selectOption('color');
+        await page.getByLabel('Source image').setInputFiles({ name: 'color.png', mimeType: 'image/png', buffer: Buffer.from(imageBytes) });
+        await expect(page.getByText('color.png · 3×1')).toBeVisible();
+        await page.getByLabel('Grid width').fill('3');
+        await page.getByLabel('Grid height').fill('1');
+        await page.getByRole('button', { name: 'Update preview now' }).click();
+        await expect(page.getByRole('img', { name: 'Generated 3 by 1 color grid' })).toBeVisible();
+        await expect(page.getByLabel('Generated color palette')).toContainText('#FF0000');
+        if (standard) await page.getByLabel('Create a standard version of this color puzzle').check();
+        await page.getByRole('button', { name: 'Analyze uniqueness', exact: true }).click();
+        await expect(page.getByText('Client uniqueness result: unique.')).toBeVisible();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+
+        const title = `Imported ${standard ? 'standard' : 'color'} ${Date.now()}`;
+        await page.getByLabel('Puzzle title').fill(title);
+        const saving = page.waitForResponse(response => response.url().endsWith('/puzzles/drafts') && response.request().method() === 'POST');
+        await page.getByRole('button', { name: 'Create draft and edit' }).click();
+        const response = await saving;
+        expect(response.status()).toBe(201);
+        await page.waitForURL(/\/editor\/\d+$/);
+        const draftId = new URL(page.url()).pathname.split('/').pop();
+        const stored = await page.request.get(`/puzzles/drafts/${draftId}`);
+        expect(stored.status()).toBe(200);
+        const saved = await stored.json() as { grid: { mode?: string; cells: string; palette?: Array<{ name: string; hex: string }> } };
+        expect(saved.grid.cells[2]).toBe('0');
+        if (standard) {
+            expect(saved.grid.cells).toBe('110');
+            expect(saved.grid.mode).not.toBe('color');
+        } else {
+            expect(saved.grid.mode).toBe('color');
+            expect(saved.grid.palette?.map(entry => entry.hex).sort()).toEqual(['#0000FF', '#FF0000']);
+        }
+        await expect(page.locator('.editor-page')).toBeVisible();
+        await page.reload();
+        await expect(page.getByLabel('Title', { exact: true })).toHaveValue(title);
+        const publish = page.getByRole('button', { name: 'Publish', exact: true });
+        await expect(publish).toBeEnabled();
+        page.on('dialog', dialog => dialog.accept());
+        await publish.click();
+        await page.waitForURL(/\/puzzles\/\d+$/);
+        const puzzleUrl = page.url();
+        await page.goto('/moderation');
+        await page.locator('li').filter({ has: page.getByRole('heading', { name: title }) }).getByRole('button', { name: 'Approve' }).click();
+        await page.goto(puzzleUrl);
+        await expect(page.locator('.player-artwork-overlay')).toHaveCount(0);
+        await page.getByRole('button', { name: standard ? 'Cross out' : 'Cross out ×', exact: true }).click();
+        await page.locator('[data-player-cell="2"]').click();
+        if (standard) await page.getByRole('button', { name: 'Fill', exact: true }).click();
+        for (const index of [0, 1]) {
+            if (!standard) {
+                const colorId = Number(saved.grid.cells[index]);
+                await page.getByRole('button', { name: `Fill with ${saved.grid.palette![colorId - 1].name}, colour ${colorId}` }).click();
+            }
+            await page.locator(`[data-player-cell="${index}"]`).click();
+        }
+        await expect(page.locator('.progress-status')).toContainText('Solved — verified by the server');
+        await expect(page.locator('.player-artwork-overlay img')).toBeVisible();
+        await expect.poll(() => page.locator('.player-artwork-overlay img').evaluate(image => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+    });
+}

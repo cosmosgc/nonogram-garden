@@ -36,7 +36,7 @@ class UniquenessSolverTest extends TestCase
         self::assertSame('unknown', $solver->analyze(1, 1, [[1]], [[1]]));
     }
 
-    public function test_candidate_generation_has_a_global_memory_budget(): void
+    public function test_candidate_generation_has_a_global_candidate_budget(): void
     {
         $solver = new UniquenessSolver(candidateLimit: 2);
 
@@ -48,6 +48,14 @@ class UniquenessSolverTest extends TestCase
         $solver = new UniquenessSolver(candidateLimit: 1);
 
         self::assertSame('unknown', $solver->analyze(1, 1, [[0]], [[0]]));
+    }
+
+    public function test_returns_unknown_when_candidate_generation_exceeds_the_memory_budget(): void
+    {
+        $clues = array_fill(0, 30, [1, 1, 1, 1, 1, 1, 1]);
+        $solver = new UniquenessSolver(timeLimitMilliseconds: 10_000, memoryLimitBytes: 1024);
+
+        self::assertSame('unknown', $solver->analyze(30, 30, $clues, $clues));
     }
 
     public function test_maximum_dimension_candidate_generation_is_time_bounded(): void

@@ -8,6 +8,7 @@ type Mark = number;
 type Clue = number[];
 type PlayerClue = Clue | ColorClue[];
 type StartHint = { row_index: number; column_index: number; row_cells: string; column_cells: string };
+type PendingFilledGuess = { cell_index: number; guess_id: string; mark?: number };
 const root = document.getElementById('nonogram-player');
 const width = Number(root?.dataset.width);
 const height = Number(root?.dataset.height);
@@ -22,9 +23,10 @@ const compactViewport = typeof window.matchMedia === 'function'
 const puzzleId = Number(root?.dataset.puzzleId);
 const revisionId = Number(root?.dataset.revisionId);
 const progressUrl = root?.dataset.progressUrl;
+const revealImageUrl = root?.dataset.revealImageUrl;
 const gameSessionUrl = root?.dataset.gameSessionUrl;
 const gameModeUrl = root?.dataset.gameModeUrl;
-const lifeCheckUrl = root?.dataset.lifeCheckUrl;
+const lifeCheckBatchUrl = root?.dataset.lifeCheckBatchUrl;
 const gameRestartUrl = root?.dataset.gameRestartUrl;
 const startHint = parseStartHint(root?.dataset.startHint);
 const authenticated = Number(root?.dataset.userId) > 0;
@@ -44,8 +46,7 @@ const initialLives = ref<number | null>(null);
 const gameStateReady = ref(!gameSessionUrl);
 const gameModeLocked = ref(false);
 const gameOver = ref(false);
-const pendingGuessCells = ref(new Set<number>());
-const checkingGuess = computed(() => pendingGuessCells.value.size > 0);
+const syncingGuesses = ref(false);
 const updatingGameMode = ref(false);
 const rowClueWidth = computed(() => Math.max(64, ...rowClues.map(clue => clueText(clue).length * 8 + 16)));
 const columnClueHeight = computed(() => Math.max(44, ...columnClues.map(clue => clue.length * 20 + 8)));
@@ -60,13 +61,16 @@ const progressStatus = ref('Loading progress…');
 const progressConflict = ref(false);
 const serverCompleted = ref(false);
 const replayMode = ref(false);
+const showRevealOverlay = ref(false);
 const localConflictCopy = ref<{ marks: string; elapsedSeconds: number; serverVersion: number } | null>(null);
 let activeSince: number | null = null;
 let timer: ReturnType<typeof setInterval> | undefined;
 let gamepadTimer: ReturnType<typeof setInterval> | undefined;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
+let guessSyncTimer: ReturnType<typeof setTimeout> | undefined;
 let saving = false;
 let saveQueued = false;
+let guessSyncPromise: Promise<void> | null = null;
 let lastGuestSaveAt = 0;
 let syncingGameState = false;
 let autoCrossBeforeReplay = true;
@@ -76,7 +80,7 @@ let suppressPointerClickAt: { index: number; time: number } | null = null;
 const gamepadButtons = new Map<number, boolean[]>();
 const gamepadDirections = new Map<number, { x: number; y: number; nextMoveAt: number }>();
 const confirmedFilledCells = new Set<number>();
-const pendingGuessIds = new Map<number, string>();
+const pendingFilledGuesses: PendingFilledGuess[] = [];
 
 function parseStartHint(raw: string | undefined): StartHint | null {
     if (!raw || colorMode) return null;
@@ -188,7 +192,53 @@ function lineHasPattern(line: Mark[], clue: Clue, forcedFillIndex = -1): boolean
 
 function autoCrossCompletedLines(source: Mark[]): Mark[] {
     const next = [...source];
-    if (!autoCross.value || colorMode) return next;
+    if (!autoCross.value) return next;
+
+    if (colorMode) {
+        function crossConfirmedColorLine(indices: number[], clue: ColorClue[]): boolean {
+            const line = indices.map(index => next[index]);
+            const filledPositions = indices.filter(index => next[index] > 0 && next[index] !== 9);
+            if (filledPositions.some(index => !confirmedFilledCells.has(index))) return false;
+
+            const runs: ColorClue[] = [];
+            for (let position = 0; position < line.length;) {
+                const colorId = line[position];
+                if (colorId === 0 || colorId === 9) {
+                    position++;
+                    continue;
+                }
+
+                let length = 1;
+                while (position + length < line.length && line[position + length] === colorId) length++;
+                runs.push([length, colorId]);
+                position += length;
+            }
+            if (runs.length !== clue.length || !runs.every(([length, colorId], index) =>
+                length === clue[index]?.[0] && colorId === clue[index]?.[1])) return false;
+
+            let changed = false;
+            for (const index of indices) {
+                if (next[index] === 0) {
+                    next[index] = 9;
+                    changed = true;
+                }
+            }
+            return changed;
+        }
+
+        for (let pass = 0; pass < width + height; pass++) {
+            let changed = false;
+            for (let y = 0; y < height; y++) {
+                changed = crossConfirmedColorLine(Array.from({ length: width }, (_, x) => y * width + x), rowClues[y] as ColorClue[]) || changed;
+            }
+            for (let x = 0; x < width; x++) {
+                changed = crossConfirmedColorLine(Array.from({ length: height }, (_, y) => y * width + x), columnClues[x] as ColorClue[]) || changed;
+            }
+            if (!changed) break;
+        }
+
+        return next;
+    }
 
     function crossForcedEmptyCells(indices: number[], clue: Clue): boolean {
         const line = indices.map(index => next[index] === 1 && !confirmedFilledCells.has(index) ? 0 : next[index]);
@@ -279,6 +329,16 @@ watch(hardcoreMode, enabled => {
     if (!syncingGameState) void updateGameMode(enabled);
 }, { flush: 'sync' });
 
+watch(candidateComplete, completed => {
+    if (completed && authenticated && progressReady.value && !progressConflict.value && !serverCompleted.value) {
+        void syncAndSaveProgress();
+    }
+});
+
+watch(serverCompleted, completed => {
+    if (completed) showRevealOverlay.value = true;
+}, { flush: 'sync' });
+
 function createGuessId(): string {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, character => {
         const random = Math.floor(Math.random() * 16);
@@ -286,38 +346,83 @@ function createGuessId(): string {
     });
 }
 
-async function checkFilledCell(index: number, mark: number): Promise<boolean> {
-    if (!lifeCheckUrl || replayMode.value) return true;
-    if (pendingGuessCells.value.has(index)) return false;
-    pendingGuessCells.value.add(index);
-    const guessId = pendingGuessIds.get(index) ?? createGuessId();
-    pendingGuessIds.set(index, guessId);
-    try {
-        const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
-        const response = await fetch(configuredRoute(lifeCheckUrl), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken },
-            body: JSON.stringify({ cell_index: index, guess_id: guessId, ...(colorMode ? { mark } : {}) }),
-        });
-        const previousLives = livesRemaining.value;
-        const payload = await readJsonResponse(response);
-        if (typeof payload.hardcore === 'boolean') applyGameState(payload);
-        if (!payload.hardcore && payload.lives_remaining === previousLives) confirmedFilledCells.add(index);
-        else confirmedFilledCells.delete(index);
-        if (!response.ok) throw new Error(payload.message ?? 'The fill could not be checked.');
-        pendingGuessIds.delete(index);
-        if (gameOver.value) {
-            if (activeSince !== null) elapsedSeconds.value += Math.floor((Date.now() - activeSince) / 1000);
-            activeSince = null;
-            paused.value = true;
-        }
-        return true;
-    } catch (error) {
-        progressStatus.value = error instanceof Error ? error.message : 'The fill could not be checked.';
-        return false;
-    } finally {
-        pendingGuessCells.value.delete(index);
+function queueFilledCell(index: number, mark: number) {
+    if (!lifeCheckBatchUrl || replayMode.value) return;
+    const guess: PendingFilledGuess = {
+        cell_index: index,
+        guess_id: createGuessId(),
+        ...(colorMode ? { mark } : {}),
+    };
+    pendingFilledGuesses.push(guess);
+    scheduleGuessSync();
+}
+
+function scheduleGuessSync() {
+    if (!lifeCheckBatchUrl || pendingFilledGuesses.length === 0 || guessSyncTimer) return;
+    guessSyncTimer = setTimeout(() => {
+        guessSyncTimer = undefined;
+        void syncPendingFilledGuesses();
+    }, 3000);
+}
+
+async function syncPendingFilledGuesses(): Promise<void> {
+    if (!lifeCheckBatchUrl) return;
+    if (guessSyncPromise) {
+        await guessSyncPromise;
+        return;
     }
+    if (pendingFilledGuesses.length === 0) return;
+    if (guessSyncTimer) clearTimeout(guessSyncTimer);
+    guessSyncTimer = undefined;
+    const submittedGuesses = pendingFilledGuesses.slice(0, 200);
+    syncingGuesses.value = true;
+    const syncPromise = (async () => {
+        try {
+            const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
+            const response = await fetch(configuredRoute(lifeCheckBatchUrl), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                body: JSON.stringify({ guesses: submittedGuesses }),
+            });
+            const payload = await readJsonResponse(response);
+            if (response.status === 409) {
+                if (typeof payload.hardcore === 'boolean') applyGameState(payload);
+                pendingFilledGuesses.length = 0;
+                progressStatus.value = payload.message ?? 'No lives remain. Start a new attempt to continue.';
+                return;
+            }
+            if (!response.ok) throw new Error(payload.message ?? 'Filled cells could not be synced.');
+
+            const processedIds = new Set(Array.isArray(payload.processed_guess_ids) ? payload.processed_guess_ids as string[] : []);
+            const correctIds = new Set(Array.isArray(payload.correct_guess_ids) ? payload.correct_guess_ids as string[] : []);
+            for (const guess of submittedGuesses) {
+                if (marks.value[guess.cell_index] === (guess.mark ?? 1)) {
+                    if (correctIds.has(guess.guess_id)) confirmedFilledCells.add(guess.cell_index);
+                    else if (processedIds.has(guess.guess_id)) confirmedFilledCells.delete(guess.cell_index);
+                }
+            }
+            for (let index = pendingFilledGuesses.length - 1; index >= 0; index--) {
+                if (processedIds.has(pendingFilledGuesses[index]!.guess_id)) pendingFilledGuesses.splice(index, 1);
+            }
+            if (typeof payload.hardcore === 'boolean') applyGameState(payload);
+            if (gameOver.value) {
+                if (activeSince !== null) elapsedSeconds.value += Math.floor((Date.now() - activeSince) / 1000);
+                activeSince = null;
+                paused.value = true;
+                pendingFilledGuesses.length = 0;
+            }
+            const nextMarks = autoCrossCompletedLines(marks.value);
+            if (nextMarks.join('') !== marks.value.join('')) marks.value = nextMarks;
+        } catch (error) {
+            progressStatus.value = error instanceof Error ? `${error.message} — retrying on the next sync` : 'Fill sync failed — retrying on the next sync';
+        } finally {
+            syncingGuesses.value = false;
+            guessSyncPromise = null;
+            if (pendingFilledGuesses.length > 0) scheduleGuessSync();
+        }
+    })();
+    guessSyncPromise = syncPromise;
+    await syncPromise;
 }
 
 function applyStartHintToProgress() {
@@ -486,8 +591,17 @@ function scheduleProgressSave() {
         saveGuestProgress();
         return;
     }
-    if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => { void saveProgress(); }, 900);
+    if (saveTimer) return;
+    progressStatus.value = 'Changes are local; account sync is pending.';
+    saveTimer = setTimeout(() => {
+        saveTimer = undefined;
+        void syncAndSaveProgress();
+    }, 10_000);
+}
+
+async function syncAndSaveProgress(): Promise<void> {
+    await syncPendingFilledGuesses();
+    await saveProgress();
 }
 
 async function loadProgress() {
@@ -558,6 +672,7 @@ async function saveProgress(): Promise<boolean> {
     }
     if (saving) { saveQueued = true; progressStatus.value = 'Saving your latest progress…'; return false; }
     if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = undefined;
     const submittedMarks = marks.value.join('');
     const submittedElapsed = totalElapsedSeconds();
     const submittedVersion = progressVersion.value;
@@ -609,6 +724,7 @@ async function saveProgress(): Promise<boolean> {
 function startReplay() {
     if (!serverCompleted.value || !progressReady.value) return;
     replayMode.value = true;
+    showRevealOverlay.value = false;
     autoCrossBeforeReplay = autoCross.value;
     autoCross.value = false;
     confirmedFilledCells.clear();
@@ -650,6 +766,9 @@ async function restartAttempt() {
         const payload = await readJsonResponse(response);
         if (!response.ok) throw new Error(payload.message ?? 'A new attempt could not be started.');
         applyGameState(payload);
+        pendingFilledGuesses.length = 0;
+        if (guessSyncTimer) clearTimeout(guessSyncTimer);
+        guessSyncTimer = undefined;
         confirmedFilledCells.clear();
         marks.value = Array<Mark>(width * height).fill(0);
         elapsedSeconds.value = 0;
@@ -672,20 +791,21 @@ function exitReplay() {
     activeSince = null;
     paused.value = true;
     replayMode.value = false;
+    showRevealOverlay.value = true;
     autoCross.value = autoCrossBeforeReplay;
     clockPulse.value++;
     progressStatus.value = 'The original completion remains verified. Replay progress is saved locally.';
 }
 
-async function markCell(index: number, requestedTool: 'fill' | 'cross' | 'erase' = tool.value) {
-    if (paused.value || !progressReady.value || !gameStateReady.value || pendingGuessCells.value.has(index) || gameOver.value || progressConflict.value || (serverCompleted.value && !replayMode.value)) return;
+function markCell(index: number, requestedTool: 'fill' | 'cross' | 'erase' = tool.value) {
+    if (paused.value || !progressReady.value || !gameStateReady.value || gameOver.value || progressConflict.value || (serverCompleted.value && !replayMode.value)) return;
     const value: Mark = requestedTool === 'fill' ? (colorMode ? activeColorId.value : 1) : requestedTool === 'cross' ? (colorMode ? 9 : 2) : 0;
     if (marks.value[index] === value) return;
     const originalMark = marks.value[index];
     const isFilledColor = value > 0 && value !== (colorMode ? 9 : 2);
     if (isFilledColor && originalMark !== value) {
-        if (!await checkFilledCell(index, value)) return;
-        if (!colorMode && !lifeCheckUrl && !replayMode.value) confirmedFilledCells.add(index);
+        queueFilledCell(index, value);
+        if (!colorMode && !lifeCheckBatchUrl && !replayMode.value) confirmedFilledCells.add(index);
     } else if (value !== 1) confirmedFilledCells.delete(index);
     if (paused.value || gameOver.value || progressConflict.value || (serverCompleted.value && !replayMode.value)) return;
     const next = [...marks.value];
@@ -859,6 +979,7 @@ onUnmounted(() => {
     window.removeEventListener('pointerup', stopPainting);
     window.removeEventListener('pointercancel', stopPainting);
     if (saveTimer) clearTimeout(saveTimer);
+    if (guessSyncTimer) clearTimeout(guessSyncTimer);
     if (!authenticated && progressReady.value) {
         if (replayMode.value) saveReplayProgress();
         else saveGuestProgress();
@@ -871,7 +992,7 @@ onUnmounted(() => {
   <main class="player-page">
     <div class="player-toolbar">
       <div class="player-tools" role="group" aria-label="Player mark">
-        <button v-if="!colorMode" v-for="item in ['fill', 'cross', 'erase'] as const" :key="item" :disabled="!progressReady || !gameStateReady || gameOver || checkingGuess || updatingGameMode || progressConflict || (serverCompleted && !replayMode)" :aria-pressed="tool === item" @click="tool = item">{{ item === 'fill' ? 'Fill' : item === 'cross' ? 'Cross out' : 'Erase' }}</button>
+        <button v-if="!colorMode" v-for="item in ['fill', 'cross', 'erase'] as const" :key="item" :disabled="!progressReady || !gameStateReady || gameOver || updatingGameMode || progressConflict || (serverCompleted && !replayMode)" :aria-pressed="tool === item" @click="tool = item">{{ item === 'fill' ? 'Fill' : item === 'cross' ? 'Cross out' : 'Erase' }}</button>
         <template v-if="colorMode">
           <button v-for="(entry, index) in palette" :key="entry.hex" class="palette-mark" :disabled="!progressReady || !gameStateReady || gameOver || updatingGameMode || progressConflict || (serverCompleted && !replayMode)" :aria-label="`Fill with ${entry.name}, colour ${index + 1}`" :aria-pressed="tool === 'fill' && activeColorId === index + 1" @click="tool = 'fill'; activeColorId = index + 1"><span class="palette-swatch" :style="{ backgroundColor: entry.hex }" aria-hidden="true"></span><span>{{ index + 1 }} · {{ entry.name }}</span></button>
           <button :disabled="!progressReady || !gameStateReady || gameOver || progressConflict || (serverCompleted && !replayMode)" :aria-pressed="tool === 'cross'" @click="tool = 'cross'">Cross out ×</button>
@@ -879,16 +1000,16 @@ onUnmounted(() => {
         </template>
       </div>
       <div class="player-controls">
-        <label v-if="gameSessionUrl" class="player-hardcore"><input v-model="hardcoreMode" type="checkbox" :disabled="!gameStateReady || gameModeLocked || gameOver || checkingGuess || updatingGameMode || serverCompleted"> Hardcore mode</label>
+        <label v-if="gameSessionUrl" class="player-hardcore"><input v-model="hardcoreMode" type="checkbox" :disabled="!gameStateReady || gameModeLocked || gameOver || syncingGuesses || updatingGameMode || serverCompleted"> Hardcore mode</label>
         <span v-if="gameSessionUrl" class="player-lives">{{ hardcoreMode || replayMode ? 'Lives: off' : `Lives: ${livesRemaining ?? '…'} / ${initialLives ?? '…'}` }}</span>
-        <label v-if="!colorMode" class="player-auto-cross"><input v-model="autoCross" type="checkbox" :disabled="!progressReady || !gameStateReady || hardcoreMode || replayMode || gameOver || progressConflict || (serverCompleted && !replayMode)"> Auto-cross completed lines</label>
+        <label class="player-auto-cross"><input v-model="autoCross" type="checkbox" :disabled="!progressReady || !gameStateReady || hardcoreMode || replayMode || gameOver || progressConflict || (serverCompleted && !replayMode)"> Auto-cross completed lines</label>
         <span role="timer" aria-label="Elapsed time">{{ elapsed }}</span>
         <span>Mistakes: {{ mistakeCount }}</span>
         <button :disabled="!progressReady || gameOver || (serverCompleted && !replayMode)" @click="togglePause">{{ serverCompleted && !replayMode ? 'Completed' : paused ? 'Resume' : 'Pause' }}</button>
         <button v-if="gameOver && !serverCompleted" @click="restartAttempt">Try again</button>
         <button v-if="serverCompleted && !replayMode" @click="startReplay">Play again</button>
         <button v-else-if="serverCompleted && replayMode" @click="exitReplay">Back to completed result</button>
-        <button v-if="authenticated" :disabled="!progressReady || progressConflict || serverCompleted" @click="saveProgress">Save progress</button>
+        <button v-if="authenticated" :disabled="!progressReady || progressConflict || serverCompleted" @click="syncAndSaveProgress">Save progress</button>
         <button aria-label="Zoom out" :disabled="cellSize <= minimumCellSize" @click="cellSize = Math.max(minimumCellSize, cellSize - 4)">−</button>
         <button aria-label="Zoom in" :disabled="cellSize >= 52" @click="cellSize = Math.min(52, cellSize + 4)">+</button>
       </div>
@@ -896,8 +1017,19 @@ onUnmounted(() => {
     <p class="player-help">Keyboard: arrows or WASD move, Enter/Space fills, X crosses, Backspace erases. Mouse: left-drag to fill, right-click to cross. Gamepads: D-pad or left stick moves; A fills, B crosses, X erases. Every connected controller gets its own cursor; all inputs share this board. <span v-if="connectedGamepadCount" role="status">{{ connectedGamepadCount }} gamepad{{ connectedGamepadCount === 1 ? '' : 's' }} connected.</span></p>
     <p v-if="startHint" class="player-start-hint">Starting hint filled row {{ startHint.row_index + 1 }} and column {{ startHint.column_index + 1 }}.</p>
     <p v-else-if="width === 1 || height === 1" class="player-start-hint">Starting line hints are disabled for single-row or single-column puzzles to avoid revealing the entire answer.</p>
-    <div class="player-grid-scroll">
-      <table class="player-grid" aria-label="Nonogram puzzle" :style="{ '--player-cell-size': `${cellSize}px`, '--player-row-clue-width': `${rowClueWidth}px`, '--player-clue-height': `${columnClueHeight}px` }">
+    <section v-if="serverCompleted && !replayMode && revealImageUrl" class="player-reveal-control" aria-label="Completed puzzle artwork">
+      <div>
+        <h2>The picture behind this puzzle</h2>
+        <p>You solved this exact puzzle revision. The picture is overlaid on the board.</p>
+      </div>
+      <button type="button" :aria-pressed="showRevealOverlay" aria-controls="player-grid-scroll" @click="showRevealOverlay = !showRevealOverlay">
+        {{ showRevealOverlay ? 'Show puzzle' : 'Show picture overlay' }}
+      </button>
+    </section>
+    <div class="player-board-stage">
+      <div id="player-grid-scroll" class="player-grid-scroll">
+        <div class="player-grid-canvas" :style="{ '--player-cell-size': `${cellSize}px`, '--player-row-clue-width': `${rowClueWidth}px`, '--player-clue-height': `${columnClueHeight}px`, '--player-board-width': `${width * cellSize}px`, '--player-board-height': `${height * cellSize}px` }">
+          <table class="player-grid" aria-label="Nonogram puzzle">
         <colgroup>
           <col :style="{ width: `${rowClueWidth}px` }">
           <col v-for="x in width" :key="x" :style="{ width: `${cellSize}px` }">
@@ -907,14 +1039,21 @@ onUnmounted(() => {
           <th scope="row" :class="{ 'active-line': cursorY === y }"><span class="sr-only">Row {{ y + 1 }} clue: {{ clueText(clue) }}</span><span v-for="(item, index) in clueItems(clue)" :key="index" :class="{ 'color-clue-item': item.colorId !== null }" :style="item.colorId ? { '--clue-color': palette[item.colorId - 1]?.hex } : {}"><span v-if="item.colorId" class="clue-color-id">{{ item.colorId }}</span>{{ index > 0 ? ' ' : '' }}{{ item.text }}</span></th>
             <td v-for="x in width" :key="x" :class="{ 'active-line': cursorY === y || cursorX === x - 1 }">
               <button type="button" :data-player-cell="y * width + x - 1" :style="cellStyle(marks[y * width + x - 1])" :class="{ 'cell-filled': !colorMode && marks[y * width + x - 1] === 1, 'cell-crossed': !colorMode && marks[y * width + x - 1] === 2, 'cell-color-filled': colorMode && marks[y * width + x - 1] > 0 && marks[y * width + x - 1] !== 9, 'cell-color-crossed': colorMode && marks[y * width + x - 1] === 9, 'pointer-cursor': pointerCursorIndex === y * width + x - 1 }" :tabindex="cursorX === x - 1 && cursorY === y ? 0 : -1"
-              :aria-label="label(y * width + x - 1)" :aria-pressed="marks[y * width + x - 1] !== 0" :disabled="paused || !progressReady || !gameStateReady || pendingGuessCells.has(y * width + x - 1) || updatingGameMode || gameOver || progressConflict || (serverCompleted && !replayMode)"
+              :aria-label="label(y * width + x - 1)" :aria-pressed="marks[y * width + x - 1] !== 0" :disabled="paused || !progressReady || !gameStateReady || updatingGameMode || gameOver || progressConflict || (serverCompleted && !replayMode)"
               @pointerdown="onCellPointerDown(y * width + x - 1, $event)" @pointerenter="onCellPointerEnter(y * width + x - 1, $event)" @click="onCellClick(y * width + x - 1)" @contextmenu.prevent @keydown="onCellKey(y * width + x - 1, $event)">
               <span aria-hidden="true">{{ markGlyph(marks[y * width + x - 1]) }}</span>
               <span v-for="(cursor, padIndex) in gamepadCursors" :key="padIndex" :hidden="cursor.y !== y || cursor.x !== x - 1" class="gamepad-cursor-badge" :aria-hidden="true">P{{ Number(padIndex) + 1 }}</span>
             </button>
           </td>
         </tr></tbody>
-      </table>
+          </table>
+          <Transition name="artwork-overlay">
+            <div v-if="serverCompleted && !replayMode && revealImageUrl && showRevealOverlay" class="player-artwork-overlay" role="img" aria-label="Original picture overlaid on the completed puzzle">
+              <img :src="revealImageUrl" alt="Picture used to create this puzzle" loading="eager">
+            </div>
+          </Transition>
+        </div>
+      </div>
     </div>
     <p v-if="gameOver" class="player-game-over" role="alert">No lives remain. Your progress is saved; start a new attempt to continue.</p>
     <p class="progress-status" role="status" aria-live="polite">{{ progressStatus }}</p>
@@ -933,4 +1072,8 @@ onUnmounted(() => {
 .player-page{max-width:1100px;margin:0 auto;padding:clamp(16px,4vw,32px);color:#17231f}.player-toolbar,.player-tools,.player-controls{display:flex;align-items:center;flex-wrap:wrap;gap:8px}.player-toolbar{justify-content:space-between;margin:18px 0;padding:16px;border:1px solid #dce4dc;border-radius:16px;background:#fff;box-shadow:0 8px 24px rgb(24 46 34 / 5%)}.player-page button{min-width:44px;min-height:44px;padding:7px 12px;border:1px solid #d3ded4;border-radius:10px;background:white;color:#20352a;font-weight:650;cursor:pointer;transition:background .15s,border-color .15s}.player-page button:hover:not(:disabled){border-color:#236b50;background:#edf4ed}.player-tools button[aria-pressed="true"],.player-page button[aria-pressed="true"]{border-color:#236b50;background:#236b50;color:#fff}.player-page button:disabled{opacity:.5;cursor:not-allowed}.player-page button:focus-visible{outline:3px solid #e08b39;outline-offset:2px}.player-help{max-width:760px;color:#58685d;line-height:1.65}.player-start-hint{max-width:max-content;margin:12px 0;padding:10px 14px;border:1px solid #f0d6a7;border-radius:10px;background:#fff8e9;font-weight:650}.player-grid-scroll{max-width:100%;overflow:auto;border:1px solid #dce4dc;border-radius:14px;background:#fff}.player-grid{width:max-content;table-layout:fixed;border-collapse:collapse;margin:20px auto}.player-grid th{width:var(--player-cell-size);min-width:0;height:var(--player-clue-height);padding:0;border:1px solid #ccd7cd;background:#f5f8f4;text-align:center;vertical-align:bottom;white-space:nowrap;overflow:hidden}.player-grid .clue-corner{width:var(--player-row-clue-width);min-width:var(--player-row-clue-width)}.player-grid .column-clue{display:flex;height:var(--player-clue-height);flex-direction:column;align-items:center;justify-content:flex-end;font-size:13px;font-weight:700;line-height:20px}.player-grid tbody th{width:var(--player-row-clue-width);min-width:var(--player-row-clue-width);height:var(--player-cell-size);padding:0 8px 0 0;text-align:right;vertical-align:middle}.player-grid td{width:var(--player-cell-size);height:var(--player-cell-size);padding:0;border:1px solid #aebdaf}.player-grid td button{position:relative;display:grid;width:var(--player-cell-size);height:var(--player-cell-size);min-width:var(--player-cell-size);min-height:var(--player-cell-size);place-items:center;touch-action:none;padding:0;border:0;border-radius:0;background:#fff;font-size:18px}.player-grid td button.pointer-cursor{box-shadow:inset 0 0 0 2px #e08b39}.player-grid td button.cell-filled{background:#26352a;color:#fff}.player-grid td button.cell-crossed{background:#fff;color:#c24132}.player-grid td button.cell-crossed span:first-child{display:grid;width:72%;height:72%;place-items:center;border-radius:50%;background:#fff1ed;font-size:17px;font-weight:900;line-height:1}.gamepad-cursor-badge{position:absolute;right:1px;bottom:1px;display:grid;width:12px;height:12px;place-items:center;border-radius:50%;background:#e08b39;color:#fff;font-size:7px;font-weight:800;line-height:1}.player-auto-cross,.player-hardcore{display:flex;min-height:44px;align-items:center;gap:8px}.player-auto-cross input,.player-hardcore input{width:20px;height:20px;accent-color:#236b50}.player-lives{font-weight:700}.player-game-over{padding:12px;border:2px solid #a33;border-radius:10px;background:#fff4f4;color:#741d1d;font-weight:700}.player-grid .active-line{background-color:#e5f1e9}.player-grid td.active-line button:not(.cell-filled):not(.cell-crossed){background-color:#f2f8f2}.candidate-status{min-height:1.5em;font-weight:600}.conflict-actions{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
 @media(forced-colors:active){.player-page button[aria-pressed="true"]{border:2px solid ButtonText}}
 .player-page .palette-mark{display:inline-flex;align-items:center;gap:7px}.player-page .palette-swatch{width:18px;height:18px;border:2px solid currentColor;border-radius:4px;box-shadow:inset 0 0 0 2px #fff}.player-grid .color-clue-item{display:inline-block;color:var(--clue-color);text-shadow:0 0 1px #17231f;font-weight:800}.player-grid .clue-color-id{display:inline-grid;width:14px;height:14px;margin-right:2px;place-items:center;border:1px solid currentColor;border-radius:50%;font-size:9px;line-height:1}.player-grid td button.cell-color-filled{background:var(--cell-color);color:#111;box-shadow:inset 0 0 0 2px #17231f;font-weight:800}.player-grid td button.cell-color-crossed{background:repeating-linear-gradient(135deg,#fff 0 4px,#d5ddd7 4px 7px);color:#17231f;font-weight:900}
+</style>
+
+<style>
+.player-reveal-control{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:20px 0 10px;padding:14px 16px;border:1px solid #b8d8c2;border-radius:14px;background:#eff8f0}.player-reveal-control h2{margin:0;font-size:1.1rem;font-weight:750}.player-reveal-control p{margin:4px 0 0;color:#52665a;font-size:.9rem}.player-board-stage{max-width:100%}.player-grid-canvas{position:relative;width:max-content;margin:20px auto}.player-grid-canvas .player-grid{margin:0}.player-artwork-overlay{position:absolute;z-index:2;top:calc(var(--player-clue-height) + 1px);left:calc(var(--player-row-clue-width) + 1px);width:var(--player-board-width);height:var(--player-board-height);box-sizing:border-box;pointer-events:none}.player-artwork-overlay img{display:block;width:100%;height:100%;object-fit:fill;opacity:.62;mix-blend-mode:multiply;filter:saturate(.9)}.artwork-overlay-enter-active,.artwork-overlay-leave-active{transition:opacity .35s ease}.artwork-overlay-enter-from,.artwork-overlay-leave-to{opacity:0}
 </style>

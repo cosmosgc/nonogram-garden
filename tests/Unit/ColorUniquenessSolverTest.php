@@ -47,6 +47,14 @@ class ColorUniquenessSolverTest extends TestCase
         self::assertSame('inconsistent', $solver->analyze(1, 1, [[[1, 1]]], [[[1, 1]]], 9));
     }
 
+    public function test_returns_unknown_when_candidate_generation_exceeds_the_memory_budget(): void
+    {
+        $clues = array_fill(0, 30, [[1, 1], [1, 1], [1, 1], [1, 1], [1, 1], [1, 1], [1, 1]]);
+        $solver = new ColorUniquenessSolver(timeLimitMilliseconds: 10_000, memoryLimitBytes: 1024);
+
+        self::assertSame('unknown', $solver->analyze(30, 30, $clues, $clues, 1));
+    }
+
     /** @return array{solver_cases: list<array<string, mixed>>} */
     private static function fixture(): array
     {

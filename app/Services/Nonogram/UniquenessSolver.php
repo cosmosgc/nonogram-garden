@@ -15,11 +15,14 @@ final class UniquenessSolver
 
     private int $candidatesGenerated = 0;
 
+    private int $memoryBaseline = 0;
+
     public function __construct(
         private readonly int $nodeLimit = 100_000,
         private readonly int $timeLimitMilliseconds = 1500,
         private readonly int $candidateLimitPerLine = 50_000,
         private readonly int $candidateLimit = 20_000,
+        private readonly int $memoryLimitBytes = 67_108_864,
     ) {}
 
     /** @param list<list<int>> $rowClues @param list<list<int>> $columnClues */
@@ -34,7 +37,11 @@ final class UniquenessSolver
         $this->solutions = 0;
         $this->exhausted = false;
         $this->candidatesGenerated = 0;
+        $this->memoryBaseline = memory_get_usage();
         $this->deadline = microtime(true) + max(0, $this->timeLimitMilliseconds) / 1000;
+        if ($this->memoryBudgetExceeded()) {
+            return 'unknown';
+        }
 
         $rows = [];
         foreach ($rowClues as $clues) {
@@ -67,7 +74,7 @@ final class UniquenessSolver
     private function lineCandidates(array $clues, int $length): array
     {
         if ($clues === [0]) {
-            if ($this->candidatesGenerated >= $this->candidateLimit || microtime(true) >= $this->deadline) {
+            if ($this->candidatesGenerated >= $this->candidateLimit || microtime(true) >= $this->deadline || $this->memoryBudgetExceeded()) {
                 $this->exhausted = true;
 
                 return [];
@@ -97,7 +104,8 @@ final class UniquenessSolver
         }
         if (count($patterns) >= $this->candidateLimitPerLine
             || $this->candidatesGenerated >= $this->candidateLimit
-            || microtime(true) >= $this->deadline) {
+            || microtime(true) >= $this->deadline
+            || $this->memoryBudgetExceeded()) {
             $this->exhausted = true;
 
             return;
@@ -127,7 +135,7 @@ final class UniquenessSolver
         if ($this->solutions >= 2 || $this->exhausted) {
             return;
         }
-        if (++$this->nodes > $this->nodeLimit || microtime(true) >= $this->deadline) {
+        if (++$this->nodes > $this->nodeLimit || microtime(true) >= $this->deadline || $this->memoryBudgetExceeded()) {
             $this->exhausted = true;
 
             return;
@@ -183,7 +191,7 @@ final class UniquenessSolver
         do {
             $changed = false;
             foreach ($rows as $y => $rowCandidates) {
-                if (microtime(true) >= $this->deadline) {
+                if (microtime(true) >= $this->deadline || $this->memoryBudgetExceeded()) {
                     $this->exhausted = true;
 
                     return false;
@@ -204,7 +212,7 @@ final class UniquenessSolver
                 }
             }
             foreach ($columns as $x => $columnCandidates) {
-                if (microtime(true) >= $this->deadline) {
+                if (microtime(true) >= $this->deadline || $this->memoryBudgetExceeded()) {
                     $this->exhausted = true;
 
                     return false;
@@ -225,6 +233,17 @@ final class UniquenessSolver
                 }
             }
         } while ($changed);
+
+        return true;
+    }
+
+    private function memoryBudgetExceeded(): bool
+    {
+        if (memory_get_usage() - $this->memoryBaseline < max(0, $this->memoryLimitBytes)) {
+            return false;
+        }
+
+        $this->exhausted = true;
 
         return true;
     }

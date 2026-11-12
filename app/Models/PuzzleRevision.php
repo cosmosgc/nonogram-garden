@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use LogicException;
 
-#[Fillable(['puzzle_id', 'revision_number', 'width', 'height', 'mode', 'rules_version', 'format_version', 'solution_data', 'palette', 'row_clues', 'column_clues', 'solution_hash', 'is_unique', 'validation_status', 'created_by'])]
+#[Fillable(['puzzle_id', 'revision_number', 'width', 'height', 'mode', 'rules_version', 'format_version', 'solution_data', 'palette', 'row_clues', 'column_clues', 'solution_hash', 'original_image_path', 'reveal_image_path', 'is_unique', 'validation_status', 'created_by'])]
 class PuzzleRevision extends Model
 {
     protected static function booted(): void

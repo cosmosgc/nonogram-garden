@@ -11,38 +11,65 @@
     --color-ink: #17231f;
     --color-leaf: #236b50;
     --color-mint: #e5f1e9;
-    --color-paper: #f6f7f2;
+    --color-paper: #faf6ed;
 }
 
 @layer base {
     body { background: var(--color-paper); color: var(--color-ink); }
     a { text-underline-offset: 3px; }
     :focus-visible { outline: 3px solid #e08b39; outline-offset: 3px; }
+    .gamepad-focus { outline: 3px solid #e08b39; outline-offset: 3px; }
 }
 
 @layer components {
-    .app-shell { min-height: 100vh; background: var(--color-paper); }
-    .site-header { position: sticky; top: 0; z-index: 30; border-bottom: 1px solid #dce4dc; background: rgb(255 255 255 / 94%); backdrop-filter: blur(14px); }
+    .app-shell, .guest-shell { min-height: 100vh; background: radial-gradient(ellipse at top, #fffaf0, transparent 55rem), var(--color-paper); }
+    .site-header { position: sticky; top: 0; z-index: 30; border-bottom: 1px solid #e8ddc9; background: rgb(255 252 245 / 95%); backdrop-filter: blur(14px); }
     .site-nav { display: flex; max-width: 1200px; min-height: 76px; align-items: center; justify-content: space-between; gap: 1rem; margin: auto; padding: .75rem 1.5rem; }
     .site-brand { display: inline-flex; align-items: center; gap: .6rem; color: #17231f; font-size: 1.2rem; font-weight: 800; text-decoration: none; letter-spacing: -.04em; }
-    .brand-mark { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 12px; background: #236b50; color: white; font-size: 1.35rem; }
+    .brand-mark { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 12px; background: #236b50; color: white; font-size: 1.35rem; box-shadow: 0 4px 0 #174f3a; }
     .brand-period { color: #e08b39; }
+    .audio-menu { position: relative; margin-left: auto; }
+    .audio-menu summary { display: flex; min-height: 44px; align-items: center; border: 1px solid #dbcdb7; border-radius: 999px; padding: .5rem .9rem; color: #35453d; font-size: .9rem; font-weight: 700; cursor: pointer; list-style: none; }
+    .audio-menu summary::-webkit-details-marker { display: none; }
+    .audio-menu summary:hover { background: #f4eadb; }
+    .audio-panel { position: absolute; top: calc(100% + .65rem); right: 0; z-index: 35; display: grid; width: min(18rem, calc(100vw - 2rem)); gap: .5rem; border: 1px solid #e8ddc9; border-radius: 1rem; background: #fffdf8; padding: 1rem; box-shadow: 0 18px 40px rgb(83 58 27 / 16%); }
+    .audio-panel p { font-weight: 750; }
+    .audio-panel button { min-height: 44px; border: 1px solid #d6dfd2; border-radius: .7rem; background: #f7faf5; padding: .6rem .75rem; text-align: left; cursor: pointer; }
+    .audio-panel button[aria-pressed="true"] { border-color: #236b50; background: #e5f1e9; color: #174f3a; }
+    .audio-panel small { color: #58685d; }
     .site-menu { position: relative; }
     .site-menu summary { display: none; cursor: pointer; }
     .site-links { display: flex; align-items: center; gap: .35rem; }
-    .site-links a, .site-links button { display: inline-flex; min-height: 42px; align-items: center; border: 0; border-radius: 999px; background: transparent; padding: .55rem .85rem; color: #35453d; font-size: .92rem; font-weight: 650; text-decoration: none; cursor: pointer; }
+    .site-links a, .site-links button { display: inline-flex; min-height: 42px; align-items: center; border: 0; border-radius: 999px; background: transparent; padding: .55rem .85rem; color: #35453d; font-size: .92rem; font-weight: 650; text-decoration: none; cursor: pointer; transition: background-color .2s ease, color .2s ease, transform .2s ease; }
     .site-links a:hover, .site-links button:hover { background: #edf4ed; color: #174f3a; }
     .site-links form { margin: 0; }
     .site-links .nav-signin { background: #236b50; color: white; }
     .site-links .nav-signin:hover { background: #174f3a; color: white; }
-    .page-heading { border-bottom: 1px solid #e1e7e0; background: #fff; }
-    .guest-shell { min-height: 100vh; }
-    .guest-card { width: min(100% - 2rem, 28rem); margin: 4rem auto; border: 1px solid #e0e6de; border-radius: 1.25rem; background: white; padding: 2rem; box-shadow: 0 20px 60px rgb(24 46 34 / 8%); }
+    .page-heading { border-bottom: 1px solid #eadfcb; background: #fffaf0; }
+    .guest-card { width: min(100% - 2rem, 28rem); margin: 4rem auto; border: 1px solid #eadfcb; border-radius: 1.5rem; background: #fffdf8; padding: 2rem; box-shadow: 0 20px 60px rgb(83 58 27 / 9%); }
+    .guest-card :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea),
+    .profile-settings :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea) { min-height: 44px; }
+    .profile-card { border: 1px solid #e8ddc9; border-radius: 1.25rem; background: #fffdf8; box-shadow: 0 8px 24px rgb(83 58 27 / 5%); }
+    .home-hero { display: flex; align-items: center; justify-content: space-between; gap: 2rem; overflow: hidden; border: 1px solid #e6d9c2; border-radius: 2rem; background: linear-gradient(130deg, #fffdf7, #f3ead6); padding: clamp(1.5rem, 5vw, 4rem); box-shadow: 0 18px 50px rgb(83 58 27 / 8%); }
+    .home-hero-grid { display: grid; width: 11rem; height: 11rem; flex: none; place-items: center; transform: rotate(8deg); border: 8px solid #fffaf0; border-radius: 2rem; background: #dcebdc; color: #236b50; font-size: 8rem; line-height: 1; box-shadow: 0 14px 30px rgb(35 107 80 / 15%); }
+    .feature-page { animation: page-arrive .45s ease-out both; }
+    .feature-heading { border-color: #e8ddc9; }
+    .feature-panel { border-color: #e8ddc9; box-shadow: 0 8px 24px rgb(83 58 27 / 5%); }
+    .feature-card { border-color: #e8ddc9; transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
+    .feature-card:hover { border-color: #c7d9c5; box-shadow: 0 14px 30px rgb(83 58 27 / 10%); }
+    .feature-page input:not([type="checkbox"]):not([type="radio"]), .feature-page select, .feature-page textarea, .feature-panel input:not([type="checkbox"]):not([type="radio"]), .feature-panel select, .feature-panel textarea { min-height: 44px; border-color: #d8ccb8; border-radius: .7rem; background-color: #fffdf8; padding: .65rem .8rem; }
+    .feature-page button, .feature-panel button { min-height: 44px; border-radius: .7rem; transition: background-color .18s ease, color .18s ease, transform .18s ease, box-shadow .18s ease; }
+    .feature-page button:hover:not(:disabled), .feature-panel button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 10px rgb(83 58 27 / 10%); }
+    .feature-page a, .feature-panel a { transition: color .18s ease, text-decoration-color .18s ease; }
+    .feature-page a:hover, .feature-panel a:hover { color: #174f3a; }
+    @keyframes page-arrive { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @media (max-width: 640px) { .home-hero-grid { display: none; } }
     @media (max-width: 760px) {
         .site-nav { min-height: 66px; padding-inline: 1rem; }
-        .site-menu summary { display: flex; min-height: 42px; align-items: center; gap: .4rem; border: 1px solid #dce4dc; border-radius: 999px; padding: .5rem .85rem; font-weight: 700; list-style: none; }
+        .nav-profile { display: none !important; }
+        .site-menu summary { display: flex; min-height: 42px; align-items: center; gap: .4rem; border: 1px solid #e8ddc9; border-radius: 999px; padding: .5rem .85rem; font-weight: 700; list-style: none; }
         .site-menu summary::-webkit-details-marker { display: none; }
-        .site-menu[open] .site-links { position: absolute; top: calc(100% + .65rem); right: 0; display: flex; width: min(18rem, calc(100vw - 2rem)); align-items: stretch; flex-direction: column; gap: .2rem; border: 1px solid #dce4dc; border-radius: 1rem; background: white; padding: .6rem; box-shadow: 0 18px 40px rgb(24 46 34 / 14%); }
+        .site-menu[open] .site-links { position: absolute; top: calc(100% + .65rem); right: 0; display: flex; width: min(18rem, calc(100vw - 2rem)); align-items: stretch; flex-direction: column; gap: .2rem; border: 1px solid #e8ddc9; border-radius: 1rem; background: #fffdf8; padding: .6rem; box-shadow: 0 18px 40px rgb(83 58 27 / 14%); }
         .site-links a, .site-links button { justify-content: flex-start; }
     }
 }

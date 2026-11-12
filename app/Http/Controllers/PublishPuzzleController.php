@@ -73,6 +73,8 @@ class PublishPuzzleController extends Controller
                 'row_clues' => $clues['rows'],
                 'column_clues' => $clues['columns'],
                 'solution_hash' => $ruleset->hash($cells, $locked->width, $locked->height, $locked->draft_palette),
+                'original_image_path' => $locked->draft_original_image_path,
+                'reveal_image_path' => $locked->draft_reveal_image_path,
                 'is_unique' => true,
                 'validation_status' => 'unique',
                 'created_by' => $request->user()->id,

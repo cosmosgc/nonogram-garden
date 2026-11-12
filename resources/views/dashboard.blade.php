@@ -4,8 +4,8 @@
     </x-slot>
 
     <div class="py-10">
-        <div class="mx-auto max-w-7xl space-y-8 px-4 sm:px-6 lg:px-8">
-            <section class="flex flex-wrap items-center justify-between gap-4 rounded-lg bg-white p-6 shadow-sm">
+        <div class="feature-page mx-auto max-w-7xl space-y-8 px-4 sm:px-6 lg:px-8">
+            <section class="feature-panel flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-white p-6 shadow-sm">
                 <div>
                     <h3 class="text-lg font-semibold">Ready to make a puzzle?</h3>
                     <p class="mt-1 text-sm text-gray-600">Create a draft, test it, and publish once its solution is verified.</p>
@@ -17,7 +17,7 @@
                 </div>
             </section>
 
-            <section class="rounded-lg bg-white p-6 shadow-sm">
+            <section class="feature-panel rounded-2xl bg-white p-6 shadow-sm">
                 <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
                     <div>
                         <h3 class="text-lg font-semibold">Your recent puzzles</h3>
@@ -49,7 +49,7 @@
                 @endif
             </section>
 
-            <section class="rounded-lg bg-white p-6 shadow-sm">
+            <section class="feature-panel rounded-2xl bg-white p-6 shadow-sm">
                 <h3 class="text-lg font-semibold">Your recent games</h3>
                 @if ($recentProgress->isEmpty())
                     <p class="mt-4 rounded border border-dashed p-6 text-gray-600">No saved games yet. Play any public puzzle to keep progress here.</p>

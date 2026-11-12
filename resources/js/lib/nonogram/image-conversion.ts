@@ -56,7 +56,7 @@ export function validateImageLimits(size: number, width: number, height: number)
     }
 }
 
-/** Decode locally in the browser. The original file is never uploaded or persisted. */
+/** Decode locally; uploading is a separate, explicit draft-creation step. */
 export async function decodeSupportedImage(file: File): Promise<ImageBitmap> {
     validateImageLimits(file.size, 1, 1);
     const header = new Uint8Array(await file.slice(0, 12).arrayBuffer());
@@ -103,22 +103,24 @@ export async function imageFileToRaster(file: File): Promise<RasterImage> {
     }
 }
 
-function luminance(data: Uint8ClampedArray, offset: number): number {
+type RGB = [number, number, number];
+
+function pixelColor(data: Uint8ClampedArray, offset: number): RGB {
     const alpha = data[offset + 3] / 255;
     const red = data[offset] * alpha + 255 * (1 - alpha);
     const green = data[offset + 1] * alpha + 255 * (1 - alpha);
     const blue = data[offset + 2] * alpha + 255 * (1 - alpha);
 
-    return red * 0.2126 + green * 0.7152 + blue * 0.0722;
+    return [red, green, blue];
 }
 
-/** Convert RGBA pixels into the canonical row-major monochrome grid. */
-export function rasterToGrid(
+/** Sample the image once per target cell, compositing transparency and padding on white. */
+export function sampleRaster(
     source: RasterImage,
     targetWidth: number,
     targetHeight: number,
     settings: ConversionSettings,
-): GridDocument {
+): RGB[] {
     validateImageLimits(1, source.width, source.height);
     if (source.data.length !== source.width * source.height * 4) throw new Error('Image pixel data has an invalid size.');
     if (!Number.isInteger(targetWidth) || !Number.isInteger(targetHeight)
@@ -160,11 +162,13 @@ export function rasterToGrid(
         scaleX = scaleY = scale;
         const extraWidth = rotatedWidth * scale - targetWidth;
         const extraHeight = rotatedHeight * scale - targetHeight;
-        offsetX = fitMode === 'contain' ? extraWidth / 2 : -extraWidth * cropX;
-        offsetY = fitMode === 'contain' ? extraHeight / 2 : -extraHeight * cropY;
+        offsetX = fitMode === 'contain' ? -extraWidth / 2 : -extraWidth * cropX;
+        offsetY = fitMode === 'contain' ? -extraHeight / 2 : -extraHeight * cropY;
     }
 
-    const pixelLuminance = (rotatedX: number, rotatedY: number): number => {
+    const rotatedColor = (rotatedX: number, rotatedY: number): RGB => {
+        rotatedX = Math.max(0, Math.min(rotatedWidth - 1, rotatedX));
+        rotatedY = Math.max(0, Math.min(rotatedHeight - 1, rotatedY));
         let sourceX: number;
         let sourceY: number;
         if (rotation === 90) {
@@ -180,12 +184,12 @@ export function rasterToGrid(
             sourceX = rotatedX;
             sourceY = rotatedY;
         }
-        return luminance(source.data, (sourceY * source.width + sourceX) * 4);
+        return pixelColor(source.data, (sourceY * source.width + sourceX) * 4);
     };
-    const cells: string[] = [];
+    const colors: RGB[] = [];
     for (let targetY = 0; targetY < targetHeight; targetY++) {
         for (let targetX = 0; targetX < targetWidth; targetX++) {
-            let average: number;
+            let average: RGB;
             const targetLeft = targetX;
             const targetTop = targetY;
             const targetRight = targetX + 1;
@@ -197,15 +201,15 @@ export function rasterToGrid(
                 const sourceY = Math.floor((centerY - offsetY) / scaleY);
                 average = centerX < offsetX || centerX >= offsetX + rotatedWidth * scaleX
                     || centerY < offsetY || centerY >= offsetY + rotatedHeight * scaleY
-                    ? 255
-                    : pixelLuminance(Math.min(rotatedWidth - 1, sourceX), Math.min(rotatedHeight - 1, sourceY));
+                    ? [255, 255, 255]
+                    : rotatedColor(sourceX, sourceY);
             } else {
                 const imageLeft = Math.max(targetLeft, offsetX);
                 const imageTop = Math.max(targetTop, offsetY);
                 const imageRight = Math.min(targetRight, offsetX + rotatedWidth * scaleX);
                 const imageBottom = Math.min(targetBottom, offsetY + rotatedHeight * scaleY);
-                let weightedLuminance = 255 * (1 - Math.max(0, imageRight - imageLeft) * Math.max(0, imageBottom - imageTop));
                 let totalWeight = 1 - Math.max(0, imageRight - imageLeft) * Math.max(0, imageBottom - imageTop);
+                const weightedColor: RGB = [255 * totalWeight, 255 * totalWeight, 255 * totalWeight];
                 if (imageRight > imageLeft && imageBottom > imageTop) {
                     const sourceLeft = (imageLeft - offsetX) / scaleX;
                     const sourceTop = (imageTop - offsetY) / scaleY;
@@ -216,18 +220,31 @@ export function rasterToGrid(
                         for (let sourceX = Math.floor(sourceLeft); sourceX < Math.ceil(sourceRight); sourceX++) {
                             const overlapX = Math.min(sourceRight, sourceX + 1) - Math.max(sourceLeft, sourceX);
                             const weight = overlapX * overlapY * scaleX * scaleY;
-                            weightedLuminance += pixelLuminance(sourceX, sourceY) * weight;
+                            const color = rotatedColor(sourceX, sourceY);
+                            for (let channel = 0; channel < 3; channel++) weightedColor[channel] += color[channel] * weight;
                             totalWeight += weight;
                         }
                     }
                 }
-                average = weightedLuminance / totalWeight;
+                average = weightedColor.map(value => value / totalWeight) as RGB;
             }
-            average = Math.max(0, Math.min(255, (average - 128) * (1 + contrast / 100) + 128 + brightness * 2.55));
-            const filled = settings.invert ? average >= settings.threshold : average < settings.threshold;
-            cells.push(filled ? '1' : '0');
+            colors.push(average);
         }
     }
+
+    return colors;
+}
+
+export function adjustChannel(value: number, settings: ConversionSettings): number {
+    return Math.max(0, Math.min(255, (value - 128) * (1 + (settings.contrast ?? 0) / 100) + 128 + (settings.brightness ?? 0) * 2.55));
+}
+
+/** Convert RGBA pixels into the canonical row-major monochrome grid. */
+export function rasterToGrid(source: RasterImage, targetWidth: number, targetHeight: number, settings: ConversionSettings): GridDocument {
+    const cells = sampleRaster(source, targetWidth, targetHeight, settings).map(([red, green, blue]) => {
+        const average = adjustChannel(red * 0.2126 + green * 0.7152 + blue * 0.0722, settings);
+        return (settings.invert ? average >= settings.threshold : average < settings.threshold) ? '1' : '0';
+    });
 
     if (settings.cleanupIsolatedCells) {
         const original = cells.join('');

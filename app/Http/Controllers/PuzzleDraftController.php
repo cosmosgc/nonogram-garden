@@ -7,18 +7,24 @@ use App\Http\Requests\UpdatePuzzleDraftRequest;
 use App\Models\Puzzle;
 use App\Services\Nonogram\ColorGrid;
 use App\Services\Nonogram\Grid;
+use App\Services\Nonogram\PuzzleImageStorage;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use InvalidArgumentException;
+use Throwable;
 
 class PuzzleDraftController extends Controller
 {
-    public function store(StorePuzzleDraftRequest $request): JsonResponse
+    public function store(StorePuzzleDraftRequest $request, PuzzleImageStorage $imageStorage): JsonResponse
     {
         $data = $request->validated();
         $document = $this->normalizeDocument($data['grid']);
         $grid = $this->grid($document);
+        $sourceImage = $data['source_image'] ?? null;
+        $revealImage = $data['reveal_image'] ?? null;
+        unset($data['source_image'], $data['reveal_image']);
         $puzzle = new Puzzle([
             'title' => $data['title'] ?? 'Untitled puzzle',
             'description' => $data['description'] ?? null,
@@ -34,7 +40,26 @@ class PuzzleDraftController extends Controller
             'draft_version' => 1,
         ]);
         $puzzle->owner()->associate($request->user());
-        $puzzle->save();
+
+        $puzzleId = null;
+        try {
+            $puzzle = DB::transaction(function () use ($puzzle, $sourceImage, $revealImage, $imageStorage, &$puzzleId): Puzzle {
+                $puzzle->save();
+                $puzzleId = $puzzle->id;
+
+                if ($sourceImage instanceof UploadedFile && $revealImage instanceof UploadedFile) {
+                    $puzzle->forceFill($imageStorage->store($puzzle, $sourceImage, $revealImage))->save();
+                }
+
+                return $puzzle;
+            });
+        } catch (Throwable $exception) {
+            if ($puzzleId !== null) {
+                $imageStorage->deleteForPuzzle($puzzleId);
+            }
+
+            throw $exception;
+        }
 
         return response()->json($this->payload($puzzle, $grid), 201);
     }
@@ -89,18 +114,18 @@ class PuzzleDraftController extends Controller
         if (($data['mode'] ?? 'classic') === 'color') {
             return [
                 'mode' => 'color',
-                'rules_version' => $data['rules_version'] ?? 1,
-                'width' => $data['width'] ?? null,
-                'height' => $data['height'] ?? null,
+                'rules_version' => (int) ($data['rules_version'] ?? 1),
+                'width' => isset($data['width']) ? (int) $data['width'] : null,
+                'height' => isset($data['height']) ? (int) $data['height'] : null,
                 'cells' => $data['cells'] ?? null,
                 'palette' => $data['palette'] ?? null,
             ];
         }
 
         return [
-            'version' => $data['version'] ?? 1,
-            'width' => $data['width'] ?? null,
-            'height' => $data['height'] ?? null,
+            'version' => (int) ($data['version'] ?? 1),
+            'width' => isset($data['width']) ? (int) $data['width'] : null,
+            'height' => isset($data['height']) ? (int) $data['height'] : null,
             'cells' => $data['cells'] ?? null,
         ];
     }

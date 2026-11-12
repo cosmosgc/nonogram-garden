@@ -89,6 +89,8 @@ const clues = computed(() => mode.value === 'color'
     ? { mode: 'color' as const, ...(validColorPalette.value ? generateColorClues(grid.value as ColorGridDocument) : { rows: Array.from({ length: height.value }, () => []), columns: Array.from({ length: width.value }, () => []) }) }
     : { mode: 'classic' as const, ...generateClues(grid.value as GridDocument) });
 const activeIndex = computed(() => cursorY.value * width.value + cursorX.value);
+let keyboardPaintHeld = false;
+let keyboardStrokeBefore: GridSnapshot | null = null;
 const activeCellDescription = computed(() => {
     const mark = testMode.value ? playerMarks.value[activeIndex.value] : cells.value[activeIndex.value];
     return `Row ${cursorY.value + 1}, column ${cursorX.value + 1}, ${mark > 0 ? (mode.value === 'color' ? `filled ${palette.value[mark - 1]?.name ?? 'colour'}` : 'filled') : mark === 2 ? 'crossed out' : 'empty'}`;
@@ -294,7 +296,12 @@ function focusAccessibleCell(index: number) {
 function handleAccessibleKey(index: number, event: KeyboardEvent) {
     if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
-        paintAccessibleCell(index);
+        if (event.repeat) return;
+        if (event.key === ' ') {
+            keyboardPaintHeld = true;
+            keyboardStrokeBefore = testMode.value ? null : snapshot();
+        }
+        paintCell(index, !keyboardStrokeBefore);
         return;
     }
     if (!['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp'].includes(event.key)) return;
@@ -307,10 +314,11 @@ function handleAccessibleKey(index: number, event: KeyboardEvent) {
     const nextIndex = nextY * width.value + nextX;
     cursorX.value = nextX;
     cursorY.value = nextY;
+    if (keyboardPaintHeld) paintCell(nextIndex, !keyboardStrokeBefore);
     focusAccessibleCell(nextIndex);
 }
 
-function paintAccessibleCell(index: number) {
+function paintCell(index: number, recordHistory = true) {
     cursorX.value = index % width.value;
     cursorY.value = Math.floor(index / width.value);
     const value = tool.value === 'erase' ? 0 : tool.value === 'cross' && testMode.value ? (mode.value === 'color' ? 9 : 2) : mode.value === 'color' ? selectedColor.value : 1;
@@ -323,13 +331,32 @@ function paintAccessibleCell(index: number) {
         return;
     }
     if (cells.value[index] === value) return;
-    const before = snapshot();
+    const before = recordHistory ? snapshot() : null;
     cells.value[index] = value;
     cells.value = [...cells.value];
-    history.record(before, snapshot());
-    historyRevision.value++;
+    if (before) {
+        history.record(before, snapshot());
+        historyRevision.value++;
+    }
     saveState.value = 'Unsaved changes';
     draw();
+}
+
+function finishKeyboardStroke(): void {
+    keyboardPaintHeld = false;
+    if (!keyboardStrokeBefore) return;
+
+    history.record(keyboardStrokeBefore, snapshot());
+    keyboardStrokeBefore = null;
+    historyRevision.value++;
+}
+
+function handleWindowKeyUp(event: KeyboardEvent): void {
+    if (event.key === ' ') finishKeyboardStroke();
+}
+
+function handleWindowBlur(): void {
+    finishKeyboardStroke();
 }
 
 function clearGrid() {
@@ -375,22 +402,19 @@ function handleGridKey(event: KeyboardEvent) {
         event.preventDefault();
         cursorX.value = Math.max(0, Math.min(width.value - 1, cursorX.value + dx));
         cursorY.value = Math.max(0, Math.min(height.value - 1, cursorY.value + dy));
-        draw();
+        if (keyboardPaintHeld) {
+            paintCell(activeIndex.value, !keyboardStrokeBefore);
+        } else {
+            draw();
+        }
     } else if (event.key === ' ' || event.key === 'Enter') {
         event.preventDefault();
-        if (testMode.value) {
-            playerMarks.value[activeIndex.value] = tool.value === 'erase' ? 0 : tool.value === 'cross' ? (mode.value === 'color' ? 9 : 2) : mode.value === 'color' ? selectedColor.value : 1;
-            playerMarks.value = [...playerMarks.value];
-            saveState.value = testSolved.value ? 'Test solved!' : 'Test in progress';
-        } else {
-            const before = snapshot();
-            cells.value[activeIndex.value] = tool.value === 'erase' ? 0 : mode.value === 'color' ? selectedColor.value : 1;
-            cells.value = [...cells.value];
-            history.record(before, snapshot());
-            historyRevision.value++;
-            saveState.value = 'Unsaved changes';
+        if (event.repeat) return;
+        if (event.key === ' ') {
+            keyboardPaintHeld = true;
+            keyboardStrokeBefore = testMode.value ? null : snapshot();
         }
-        draw();
+        paintCell(activeIndex.value, !keyboardStrokeBefore);
     }
 }
 
@@ -700,6 +724,8 @@ async function loadDraft(id: number) {
 
 onMounted(() => {
     window.addEventListener('keydown', handleShortcuts);
+    window.addEventListener('keyup', handleWindowKeyUp);
+    window.addEventListener('blur', handleWindowBlur);
     const importRequested = new URLSearchParams(window.location.search).get('image_import') === '1';
     const userId = Number(editorRoot?.dataset.userId);
     if (importRequested) {
@@ -750,6 +776,9 @@ onMounted(() => {
 
 onUnmounted(() => {
     window.removeEventListener('keydown', handleShortcuts);
+    window.removeEventListener('keyup', handleWindowKeyUp);
+    window.removeEventListener('blur', handleWindowBlur);
+    finishKeyboardStroke();
     if (autosaveTimer) clearTimeout(autosaveTimer);
 });
 </script>
@@ -758,7 +787,7 @@ onUnmounted(() => {
   <main class="editor-page">
     <header class="editor-header">
       <div><a :href="configuredRoute(editorRoutes?.homeUrl)">← Home</a><h1>Nonogram editor</h1><p>Create a private puzzle draft.</p><a class="underline" :href="configuredRoute(editorRoutes?.importUrl)">Import from image</a></div>
-      <div class="save-area"><span role="status">{{ mode === 'color' ? 'Color drafts are not publishable yet. ' : '' }}{{ saveState }}<small v-if="lastSavedAt">Last saved {{ lastSavedAt }}</small></span><button v-if="recovery" @click="applyRecovery">Restore local copy</button><button v-if="puzzleId && !published" :disabled="mode === 'color' || conflicted || saveState !== 'Saved'" @click="publishPuzzle">Publish</button><button class="primary" :disabled="conflicted || published" @click="saveDraft()">Save draft</button></div>
+      <div class="save-area"><span role="status">{{ saveState }}<small v-if="lastSavedAt">Last saved {{ lastSavedAt }}</small></span><button v-if="recovery" @click="applyRecovery">Restore local copy</button><button v-if="puzzleId && !published" :disabled="conflicted || saveState !== 'Saved'" @click="publishPuzzle">Publish</button><button class="primary" :disabled="conflicted || published" @click="saveDraft()">Save draft</button></div>
     </header>
     <section class="editor-layout">
       <aside class="settings">
@@ -812,7 +841,7 @@ onUnmounted(() => {
                 :tabindex="activeIndex === y * width + x - 1 ? 0 : -1"
                 :aria-label="accessibleCellLabel(y * width + x - 1)"
                 :aria-pressed="(testMode ? playerMarks[y * width + x - 1] : cells[y * width + x - 1]) !== 0"
-                @click="paintAccessibleCell(y * width + x - 1)"
+                @click="paintCell(y * width + x - 1)"
                 @keydown="handleAccessibleKey(y * width + x - 1, $event)">{{ accessibleCellGlyph(y * width + x - 1) }}</button></td>
             </tr></tbody>
           </table>
@@ -850,4 +879,6 @@ onUnmounted(() => {
 .editor-page button:focus-visible,.editor-page input:focus-visible,.editor-page textarea:focus-visible{outline:3px solid #2478c8;outline-offset:2px}
 .palette-controls{display:grid!important;grid-template-columns:1fr;gap:8px!important}.palette-controls>p{margin:0;font-size:12px}.palette-entry{display:grid;grid-template-columns:44px minmax(70px,1fr) minmax(80px,1fr) auto;align-items:center;gap:6px}.palette-entry label{display:block}.palette-entry input{width:100%;min-width:0;padding:6px;border:1px solid #9aa69c;border-radius:5px}.palette-select{background:var(--palette-color)!important;color:#fff!important;text-shadow:0 1px 2px #000}.palette-controls>button,.mode-picker button{min-height:40px}.editor-page .clue-line span[title]{font-weight:700;text-shadow:0 0 1px #fff}.editor-page .save-area{flex-wrap:wrap}
 @media(forced-colors:active){.editor-page button[aria-pressed="true"]{border:2px solid ButtonText}}
+.editor-page{color:#26372c}.editor-header{border:1px solid #e8ddc9;border-radius:20px;background:#fffdf8;padding:20px;box-shadow:0 8px 24px rgb(83 58 27 / 5%)}.settings{position:sticky;top:88px;max-height:calc(100vh - 104px);overflow:auto;border:1px solid #e8ddc9;border-radius:20px;background:#fffdf8;padding:16px;box-shadow:0 8px 24px rgb(83 58 27 / 5%)}.settings input,.settings textarea{border-color:#d8ccb8;border-radius:10px;background:#fffefa}.board-area{border:1px solid #e8ddc9;border-radius:20px;background:#fffdf8;padding:16px;box-shadow:0 8px 24px rgb(83 58 27 / 5%)}.editor-page button,.editor-page .accessible-toggle{border-radius:10px;transition:transform .18s ease,box-shadow .18s ease,background-color .18s ease}.editor-page button:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 4px 10px rgb(83 58 27 / 10%)}.editor-page .settings button[aria-pressed="true"],.editor-page .save-area .primary{background:#236b50}
+@media(max-width:760px){.settings{position:static;max-height:none;overflow:visible}}
 </style>

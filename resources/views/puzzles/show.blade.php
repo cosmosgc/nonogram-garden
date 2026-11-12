@@ -7,9 +7,9 @@
     <title>{{ $puzzle->title }} · Nonogram</title>
     @vite(['resources/css/app.css', 'resources/js/app.ts'])
 </head>
-<body class="min-h-screen bg-slate-50 text-slate-900">
+<body class="min-h-screen text-slate-900">
     @include('layouts.feature-navigation')
-    <main class="mx-auto max-w-5xl p-6">
+    <main class="feature-page mx-auto max-w-5xl p-6">
         <header class="my-8">
             <h1 class="text-3xl font-bold">{{ $puzzle->title }}</h1>
             @if ($puzzle->moderation_status === 'pending')<p role="status" class="mt-3 rounded border border-amber-300 bg-amber-50 p-3 text-amber-950">This puzzle is pending moderator review but is currently visible under the site-wide preview setting.</p>@endif
@@ -37,13 +37,14 @@
              data-height="{{ $revision->height }}"
              data-puzzle-id="{{ $puzzle->id }}"
              data-revision-id="{{ $revision->id }}"
+             @if ($revision->reveal_image_path && auth()->check()) data-reveal-image-url="{{ route('puzzles.revisions.reveal-image', ['puzzle' => $puzzle->id, 'revision' => $revision->id]) }}" @endif
              data-mode="{{ $revision->mode }}"
              data-palette="{{ json_encode($revision->palette ?? []) }}"
              data-progress-url="{{ route('puzzles.progress.show', ['puzzle' => $puzzle->id, 'revision' => $revision->id]) }}"
              data-completion-url="{{ route('puzzles.progress.complete', ['puzzle' => $puzzle->id, 'revision' => $revision->id]) }}"
-             data-game-session-url="{{ route('puzzles.game-session.show', ['puzzle' => $puzzle->id, 'revision' => $revision->id]) }}"
-             data-game-mode-url="{{ route('puzzles.game-session.mode', ['puzzle' => $puzzle->id, 'revision' => $revision->id]) }}"
-             data-life-check-url="{{ route('puzzles.game-session.life-check', ['puzzle' => $puzzle->id, 'revision' => $revision->id]) }}"
+              data-game-session-url="{{ route('puzzles.game-session.show', ['puzzle' => $puzzle->id, 'revision' => $revision->id]) }}"
+              data-game-mode-url="{{ route('puzzles.game-session.mode', ['puzzle' => $puzzle->id, 'revision' => $revision->id]) }}"
+              data-life-check-batch-url="{{ route('puzzles.game-session.life-check.batch', ['puzzle' => $puzzle->id, 'revision' => $revision->id]) }}"
              data-game-restart-url="{{ route('puzzles.game-session.restart', ['puzzle' => $puzzle->id, 'revision' => $revision->id]) }}"
              @auth data-user-id="{{ auth()->id() }}" @endauth
              data-row-clues="{{ json_encode($revision->row_clues) }}"

@@ -74,6 +74,164 @@ test('accessible editor grid supports keyboard navigation and activation', async
     await expect(secondCell).toHaveAttribute('aria-label', 'Row 1, column 2: filled');
 });
 
+test('holding Space while moving with arrows paints one undoable keyboard stroke', async ({ page }) => {
+    draftRoutes(page, { draft: () => draft() });
+    await openEditor(page);
+    const canvas = page.locator('.editor-page canvas');
+    await canvas.focus();
+
+    await page.keyboard.down('Space');
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowRight');
+    await expect(canvas).toHaveAttribute('aria-label', /Row 1, column 3, filled/);
+    await page.keyboard.up('Space');
+
+    const undoButton = page.locator('[aria-label="Edit history"] button').first();
+    await expect(undoButton).toBeEnabled();
+    await undoButton.click();
+    await expect(canvas).toHaveAttribute('aria-label', /Row 1, column 3, empty/);
+});
+
+test('gamepad confirmation paints the focused editor canvas cell', async ({ page }) => {
+    await page.addInitScript(() => {
+        const gamepad = {
+            connected: true,
+            mapping: 'standard',
+            axes: [0, 0],
+            buttons: Array.from({ length: 16 }, () => ({ pressed: false })),
+        };
+        Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [gamepad] });
+        Object.defineProperty(window, '__testGamepad', { configurable: true, value: gamepad });
+    });
+    draftRoutes(page, { draft: () => draft() });
+    await openEditor(page);
+    await page.evaluate(() => window.dispatchEvent(new Event('gamepadconnected')));
+    const canvas = page.locator('.editor-page canvas');
+    await page.evaluate(() => {
+        document.querySelector<HTMLElement>('.editor-header')!.style.display = 'none';
+        document.querySelector<HTMLElement>('.settings')!.style.display = 'none';
+        document.querySelector<HTMLElement>('.accessible-toggle')!.style.display = 'none';
+    });
+    const setGamepadButton = async (index: number, pressed: boolean) => {
+        await page.evaluate(({ buttonIndex, isPressed }) => {
+            const gamepad = (window as Window & { __testGamepad: Gamepad }).__testGamepad;
+            (gamepad.buttons[buttonIndex] as GamepadButton & { pressed: boolean }).pressed = isPressed;
+        }, { buttonIndex: index, isPressed: pressed });
+    };
+    await setGamepadButton(15, true);
+    await expect(canvas).toBeFocused();
+    await setGamepadButton(15, false);
+    await setGamepadButton(0, true);
+
+    await expect(canvas).toHaveAttribute('aria-label', /Row 1, column 1, filled/);
+    await setGamepadButton(0, false);
+});
+
+test('gamepad directions change the selected native option outside the puzzle player', async ({ page }) => {
+    await page.addInitScript(() => {
+        const gamepad = {
+            connected: true,
+            mapping: 'standard',
+            axes: [0, 0],
+            buttons: Array.from({ length: 16 }, () => ({ pressed: false })),
+        };
+        Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [gamepad] });
+        Object.defineProperty(window, '__testGamepad', { configurable: true, value: gamepad });
+    });
+    await page.goto('/tests/browser/editor.html');
+    await page.locator('#nonogram-editor').evaluate(element => { (element as HTMLElement).style.display = 'none'; });
+    await page.evaluate(() => {
+        window.dispatchEvent(new Event('gamepadconnected'));
+        document.querySelector('#gamepad-test-select')!.addEventListener('change', event => {
+            (event.currentTarget as HTMLSelectElement).dataset.gamepadChanged = 'true';
+        });
+    });
+    const select = page.locator('#gamepad-test-select');
+    const setGamepadButton = async (index: number, pressed: boolean) => page.evaluate(({ buttonIndex, isPressed }) => {
+        const gamepad = (window as Window & { __testGamepad: Gamepad }).__testGamepad;
+        (gamepad.buttons[buttonIndex] as GamepadButton & { pressed: boolean }).pressed = isPressed;
+    }, { buttonIndex: index, isPressed: pressed });
+
+    await setGamepadButton(13, true);
+    await expect(select).toBeFocused();
+    await setGamepadButton(13, false);
+    await setGamepadButton(13, true);
+
+    await expect(select).toHaveValue('popular');
+    await expect(select).toHaveAttribute('data-gamepad-changed', 'true');
+    await setGamepadButton(13, false);
+});
+
+test('gamepad confirm moves into a modal instead of activating a background button', async ({ page }) => {
+    await page.addInitScript(() => {
+        const gamepad = {
+            connected: true,
+            mapping: 'standard',
+            axes: [0, 0],
+            buttons: Array.from({ length: 16 }, () => ({ pressed: false })),
+        };
+        Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [gamepad] });
+        Object.defineProperty(window, '__testGamepad', { configurable: true, value: gamepad });
+    });
+    await page.goto('/tests/browser/editor.html');
+    await page.evaluate(() => {
+        document.querySelector<HTMLElement>('#nonogram-editor')!.style.display = 'none';
+        document.querySelector<HTMLElement>('#gamepad-test-select')!.style.display = 'none';
+        document.body.insertAdjacentHTML('beforeend', '<button id="background-action">Background</button>');
+        document.querySelector('#background-action')!.addEventListener('click', event => {
+            (event.currentTarget as HTMLButtonElement).dataset.activated = 'true';
+        });
+        window.dispatchEvent(new Event('gamepadconnected'));
+    });
+    const setGamepadButton = async (index: number, pressed: boolean) => page.evaluate(({ buttonIndex, isPressed }) => {
+        const gamepad = (window as Window & { __testGamepad: Gamepad }).__testGamepad;
+        (gamepad.buttons[buttonIndex] as GamepadButton & { pressed: boolean }).pressed = isPressed;
+    }, { buttonIndex: index, isPressed: pressed });
+    const background = page.locator('#background-action');
+    await setGamepadButton(15, true);
+    await expect(background).toBeFocused();
+    await setGamepadButton(15, false);
+    await page.evaluate(() => document.body.insertAdjacentHTML('beforeend', '<section role="dialog" aria-modal="true"><button id="dialog-action">Dialog action</button></section>'));
+    await setGamepadButton(0, true);
+
+    await expect(page.locator('#dialog-action')).toBeFocused();
+    await expect(background).not.toHaveAttribute('data-activated', 'true');
+    await setGamepadButton(0, false);
+});
+
+test('gamepad B closes the focused open disclosure', async ({ page }) => {
+    await page.addInitScript(() => {
+        const gamepad = {
+            connected: true,
+            mapping: 'standard',
+            axes: [0, 0],
+            buttons: Array.from({ length: 16 }, () => ({ pressed: false })),
+        };
+        Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [gamepad] });
+        Object.defineProperty(window, '__testGamepad', { configurable: true, value: gamepad });
+    });
+    await page.goto('/tests/browser/editor.html');
+    await page.evaluate(() => {
+        document.querySelector<HTMLElement>('#nonogram-editor')!.style.display = 'none';
+        document.querySelector<HTMLElement>('#gamepad-test-select')!.style.display = 'none';
+        document.body.insertAdjacentHTML('beforeend', '<details open id="gamepad-menu"><summary>Open menu</summary><button>Menu action</button></details>');
+        window.dispatchEvent(new Event('gamepadconnected'));
+    });
+    const setGamepadButton = async (index: number, pressed: boolean) => page.evaluate(({ buttonIndex, isPressed }) => {
+        const gamepad = (window as Window & { __testGamepad: Gamepad }).__testGamepad;
+        (gamepad.buttons[buttonIndex] as GamepadButton & { pressed: boolean }).pressed = isPressed;
+    }, { buttonIndex: index, isPressed: pressed });
+    const summary = page.locator('#gamepad-menu summary');
+    await setGamepadButton(15, true);
+    await expect(summary).toBeFocused();
+    await setGamepadButton(15, false);
+    await setGamepadButton(1, true);
+
+    await expect(page.locator('#gamepad-menu')).not.toHaveAttribute('open', '');
+    await expect(summary).toBeFocused();
+    await setGamepadButton(1, false);
+});
+
 test('keeps editor controls and accessible cells at least 44 pixels wide and tall on mobile', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     draftRoutes(page, { draft: () => draft() });

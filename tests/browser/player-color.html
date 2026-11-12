@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="browser-test-token">
+    <title>Color Picross player browser fixture</title>
+    <link rel="stylesheet" href="/resources/css/app.css">
+</head>
+<body>
+    <div id="nonogram-player"
+         data-width="3"
+         data-height="1"
+         data-puzzle-id="12"
+         data-revision-id="34"
+         data-mode="color"
+         data-palette='[{"name":"Crimson","hex":"#C0392B"},{"name":"Ocean","hex":"#2471A3"}]'
+         data-progress-url="/mock/progress"
+         data-life-check-batch-url="/mock/life-check/batch"
+         data-user-id="77"
+         data-row-clues='[[[1,1],[1,2]]]'
+         data-column-clues='[[[1,1]],[[1,2]],[]]'
+         data-start-hint="null"></div>
+    <script type="module" src="/resources/js/app.ts"></script>
+</body>
+</html>

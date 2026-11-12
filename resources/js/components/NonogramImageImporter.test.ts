@@ -98,7 +98,7 @@ describe('NonogramImageImporter', () => {
         await flushPromises();
 
         expect(wrapper.text()).toContain('source.png · 2×1');
-        expect(wrapper.text()).toContain('not uploaded or saved');
+        expect(wrapper.text()).toContain('privately saves both the original');
         expect(canvasContext.drawImage).toHaveBeenCalledOnce();
         expect(bitmap.close).toHaveBeenCalledOnce();
         expect(fetchMock).not.toHaveBeenCalled();
@@ -147,7 +147,7 @@ describe('NonogramImageImporter', () => {
         PendingWorker.instance.onmessage?.({ data: { raster: { width: 1, height: 1, data: new Uint8ClampedArray([0, 0, 0, 255]) } } } as MessageEvent);
         await flushPromises();
         expect(wrapper.text()).not.toContain('Decoding image locally…');
-        expect(wrapper.text()).not.toContain('1×1');
+        expect(wrapper.find('[role="img"]').exists()).toBe(false);
         wrapper.unmount();
     });
 
@@ -214,6 +214,108 @@ describe('NonogramImageImporter', () => {
 
         expect(wrapper.text()).toContain('10×10 ·');
         expect(wrapper.text()).not.toContain('Image conversion failed');
+        wrapper.unmount();
+    });
+
+    it('previews color and standard variants and submits the selected encoding with its images', async () => {
+        document.body.innerHTML = '<div id="nonogram-image-importer" data-draft-store-url="/Nonogram%20laravel/public/puzzles/drafts" data-editor-edit-url-template="/Nonogram%20laravel/public/editor/__PUZZLE_ID__"></div>';
+        vi.stubGlobal('Worker', undefined);
+        vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 3, height: 1, close: vi.fn() }));
+        vi.stubGlobal('ImageData', class { constructor(public data: Uint8ClampedArray, public width: number, public height: number) {} });
+        vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+            drawImage: vi.fn(), putImageData: vi.fn(),
+            getImageData: () => ({ data: new Uint8ClampedArray([255, 0, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255]) }),
+        } as unknown as CanvasRenderingContext2D);
+        vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(callback => callback(new Blob(['png'], { type: 'image/png' })));
+        Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:color') });
+        Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
+        const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 422, json: async () => ({ message: 'Please try again.' }) });
+        vi.stubGlobal('fetch', fetchMock);
+        const wrapper = mount(NonogramImageImporter);
+        const input = wrapper.get('input[type="file"]');
+        Object.defineProperty(input.element, 'files', { configurable: true, value: [new File([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], 'color.png', { type: 'image/png' })] });
+        await input.trigger('change');
+        await flushPromises();
+        await wrapper.get('[data-import-mode]').setValue('color');
+        await wrapper.findAll('input[type="number"]')[0].setValue(3);
+        await wrapper.findAll('input[type="number"]')[1].setValue(1);
+        const button = (text: string) => wrapper.findAll('button').find(item => item.text() === text)!;
+        await button('Update preview now').trigger('click');
+
+        expect(wrapper.get('[role="img"]').attributes('aria-label')).toBe('Generated 3 by 1 color grid');
+        expect(wrapper.get('[aria-label="Generated color palette"]').text()).toContain('#FF0000');
+        await button('Analyze uniqueness').trigger('click');
+        expect(wrapper.text()).toContain('Client uniqueness result: unique.');
+        await button('Create draft and edit').trigger('click');
+        await flushPromises();
+        expect(fetchMock.mock.calls[0][0]).toBe('/Nonogram%20laravel/public/puzzles/drafts');
+        const colorForm = fetchMock.mock.calls[0][1].body as FormData;
+        expect(colorForm.get('grid[mode]')).toBe('color');
+        expect(colorForm.get('grid[rules_version]')).toBe('1');
+        expect(colorForm.get('grid[palette][0][hex]')).toMatch(/^#[0-9A-F]{6}$/);
+        expect(colorForm.get('source_image')).toBeInstanceOf(File);
+        expect(colorForm.get('reveal_image')).toBeInstanceOf(File);
+        expect(wrapper.get('[role="alert"]').text()).toBe('Please try again.');
+
+        await wrapper.get('[data-standard-version]').setValue(true);
+        expect(wrapper.get('[role="img"]').attributes('aria-label')).toBe('Generated 3 by 1 monochrome grid');
+        expect(wrapper.text()).not.toContain('Client uniqueness result: unique.');
+        await button('Create draft and edit').trigger('click');
+        await flushPromises();
+        const standardForm = fetchMock.mock.calls[1][1].body as FormData;
+        expect(standardForm.get('grid[version]')).toBe('1');
+        expect(standardForm.get('grid[cells]')).toBe('110');
+        expect(standardForm.has('grid[palette][0][hex]')).toBe(false);
+        await wrapper.get('[data-standard-version]').setValue(false);
+        expect(wrapper.get('[aria-label="Generated color palette"]').text()).toContain('#FF0000');
+        wrapper.unmount();
+    });
+
+    it('invalidates stale previews and ignores results after settings change, cancellation, or timeout', async () => {
+        vi.useFakeTimers();
+        class PendingConversion {
+            static instances: PendingConversion[] = [];
+            onmessage: ((event: MessageEvent) => void) | null = null;
+            onerror: ((event: ErrorEvent) => void) | null = null;
+            posted: { id: number } | null = null;
+            constructor(readonly url: URL) { PendingConversion.instances.push(this); }
+            postMessage(message: { id: number }) {
+                this.posted = message;
+                if (this.url.href.includes('image-decode')) this.onmessage?.({ data: { id: message.id, raster: { width: 1, height: 1, data: new Uint8ClampedArray([0, 0, 0, 255]) } } } as MessageEvent);
+            }
+            terminate() {}
+            deliver() { this.onmessage?.({ data: { id: this.posted?.id, grid: { version: 1, width: 1, height: 1, cells: '1' } } } as MessageEvent); }
+        }
+        vi.stubGlobal('Worker', PendingConversion);
+        Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:pending') });
+        Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
+        const wrapper = mount(NonogramImageImporter);
+        const input = wrapper.get('input[type="file"]');
+        Object.defineProperty(input.element, 'files', { value: [new File(['png'], 'test.png', { type: 'image/png' })] });
+        await input.trigger('change');
+        await flushPromises();
+        await vi.advanceTimersByTimeAsync(180);
+        PendingConversion.instances[1].deliver();
+        await flushPromises();
+        expect(wrapper.find('[role="img"]').exists()).toBe(true);
+
+        await wrapper.findAll('input[type="number"]')[0].setValue(2);
+        expect(wrapper.find('[role="img"]').exists()).toBe(false);
+        PendingConversion.instances[1].deliver();
+        await flushPromises();
+        expect(wrapper.find('[role="img"]').exists()).toBe(false);
+        await vi.advanceTimersByTimeAsync(180);
+        await wrapper.findAll('button').find(button => button.text() === 'Cancel conversion')!.trigger('click');
+        PendingConversion.instances[2].deliver();
+        await flushPromises();
+        expect(wrapper.find('[role="img"]').exists()).toBe(false);
+        expect(wrapper.findAll('button').some(button => button.text() === 'Create draft and edit')).toBe(false);
+        await wrapper.findAll('button').find(button => button.text() === 'Update preview now')!.trigger('click');
+        await vi.advanceTimersByTimeAsync(20_000);
+        expect(wrapper.get('[role="alert"]').text()).toContain('timed out');
+        PendingConversion.instances[3].deliver();
+        await flushPromises();
+        expect(wrapper.find('[role="img"]').exists()).toBe(false);
         wrapper.unmount();
     });
 });

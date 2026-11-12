@@ -1,10 +1,10 @@
 <!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{ $collection->title }} · Nonogram collection</title>@vite('resources/css/app.css')</head>
-<body class="min-h-screen bg-slate-50 text-slate-900">
+<body class="min-h-screen text-slate-900">
     @include('layouts.feature-navigation')
-    <main class="mx-auto max-w-5xl p-6">
-        <header class="border-b pb-6">
+    <main class="feature-page mx-auto max-w-5xl p-6">
+        <header class="feature-heading border-b pb-6">
             <p class="text-sm text-slate-600">Puzzle collection by {{ $collection->owner->name }}</p>
             <h1 class="mt-2 text-3xl font-bold">{{ $collection->title }}</h1>
             @if ($collection->description)<p class="mt-3 max-w-2xl whitespace-pre-line">{{ $collection->description }}</p>@endif
@@ -19,7 +19,7 @@
         @else
             <ol class="mt-8 space-y-3">
                 @foreach ($collection->puzzles as $puzzle)
-                    <li class="flex flex-wrap items-center justify-between gap-4 rounded-lg border bg-white p-5">
+                    <li class="feature-card flex flex-wrap items-center justify-between gap-4 rounded-2xl border bg-white p-5">
                         <div>
                             <span class="mr-3 text-sm text-slate-500">{{ $loop->iteration }}.</span>
                             <a class="font-semibold underline" href="{{ route('puzzles.show', $puzzle) }}">{{ $puzzle->title }}</a>
